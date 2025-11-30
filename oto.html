@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>シンプル音楽アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h1>シンプル音楽アプリ</h1>
+  <button id="playBtn">メロディを再生</button>
+
+  <script>
+    let audioCtx = null;
+
+    function playTone(freq, startTime, duration) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.frequency.value = freq;
+      osc.type = "sine";
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const t0 = audioCtx.currentTime + startTime;
+      const t1 = t0 + duration;
+
+      gain.gain.setValueAtTime(0.2, t0);
+      gain.gain.linearRampToValueAtTime(0, t1);
+
+      osc.start(t0);
+      osc.stop(t1);
+    }
+
+    document.getElementById("playBtn").addEventListener("click", () => {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      // ド・ミ・ソ・ド（C4, E4, G4, C5）っぽい周波数
+      const notes = [
+        261.63, // ド
+        329.63, // ミ
+        392.00, // ソ
+        523.25  // 高いド
+      ];
+
+      const noteDuration = 0.3; // 1音あたり0.3秒
+      notes.forEach((freq, i) => {
+        playTone(freq, i * noteDuration, noteDuration);
+      });
+    });
+  </script>
+</body>
+</html>
