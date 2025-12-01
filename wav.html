@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>メロディ → WAV 出力</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <h1>メロディ → WAV ダウンロード</h1>
+
+  <button id="playBtn">メロディを再生</button>
+  <button id="saveBtn">WAVで保存</button>
+
+  <script>
+    // ====== メロディ定義 ======
+    const melody = [
+      261.63, // ド
+      329.63, // ミ
+      392.00, // ソ
+      523.25  // 高いド
+    ];
+    const noteDuration = 0.3; // 各音の長さ（秒）
+
+
+    // ====== 再生用 AudioContext ======
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AC();
+      }
+      return audioCtx;
+    }
+
+    function playNote(ctx, freq, start) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = freq;
+
+      gain.gain.setValueAtTime(0.2, start);
+      gain.gain.linearRampToValueAtTime(0.0, start + noteDuration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + noteDuration);
+    }
+
+
+    // ====== 1. メロディ再生 ======
+    document.getElementById("playBtn").addEventListener("click", async () => {
+      const ctx = initAudio();
+      if (ctx.state === "suspended") await ctx.resume();
+
+      let t = ctx.currentTime + 0.05;
+      melody.forEach(freq => {
+        playNote(ctx, freq, t);
+        t += noteDuration;
+      });
+    });
+
+
+    // ====== 2. WAV生成（OfflineAudioContext） ======
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const sampleRate = 44100;
+      const totalDuration = melody.length * noteDuration;
+
+      // オフラインでレンダリング
+      const offlineCtx = new OfflineAudioContext(1, sampleRate * totalDuration, sampleRate);
+
+      let t = 0;
+      melody.forEach(freq => {
+        const osc = offlineCtx.createOscillator();
+        const gain = offlineCtx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.value = freq;
+
+        gain.gain.setValueAtTime(0.2, t);
+        gain.gain.linearRampToValueAtTime(0, t + noteDuration);
+
+        osc.connect(gain);
+        gain.connect(offlineCtx.destination);
+
+        osc.start(t);
+        osc.stop(t + noteDuration);
+
+        t += noteDuration;
+      });
+
+      const buffer = await offlineCtx.startRendering();
+
+      // WAVデータを生成
+      const wavData = audioBufferToWav(buffer);
+      const blob = new Blob([wavData], { type: "audio/wav" });
+
+      // ダウンロード
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "melody.wav";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+
+    // ====== AudioBuffer → WAV 変換関数 ======
+    function audioBufferToWav(buffer) {
+      const numOfChannels = buffer.numberOfChannels;
+      const length = buffer.length * numOfChannels * 2 + 44;
+      const result = new ArrayBuffer(length);
+      const view = new DataView(result);
+
+      function writeString(v, offset, s) {
+        for (let i = 0; i < s.length; i++) {
+          v.setUint8(offset + i, s.charCodeAt(i));
+        }
+      }
+
+      let offset = 0;
+
+      // RIFFヘッダ
+      writeString(view, offset, 'RIFF'); offset += 4;
+      view.setUint32(offset, 36 + buffer.length * numOfChannels * 2, true); offset += 4;
+      writeString(view, offset, 'WAVE'); offset += 4;
+
+      // fmtチャンク
+      writeString(view, offset, 'fmt '); offset += 4;
+      view.setUint32(offset, 16, true); offset += 4;
+      view.setUint16(offset, 1, true); offset += 2;
+      view.setUint16(offset, numOfChannels, true); offset += 2;
+      view.setUint32(offset, buffer.sampleRate, true); offset += 4;
+      view.setUint32(offset, buffer.sampleRate * numOfChannels * 2, true); offset += 4;
+      view.setUint16(offset, numOfChannels * 2, true); offset += 2;
+      view.setUint16(offset, 16, true); offset += 2;
+
+      // dataチャンク
+      writeString(view, offset, 'data'); offset += 4;
+      view.setUint32(offset, buffer.length * numOfChannels * 2, true); offset += 4;
+
+      // PCM本体
+      let pos = offset;
+      for (let ch = 0; ch < numOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++, pos += 2) {
+          const s = Math.max(-1, Math.min(1, data[i]));
+          view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+      }
+
+      return result;
+    }
+  </script>
+</body>
+</html>
