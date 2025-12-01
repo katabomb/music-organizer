@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ブラウザ作曲スタジオ（WAV出力つき）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 10px;
+      line-height: 1.4;
+    }
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 10px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    label {
+      font-size: 0.9rem;
+    }
+    input, select {
+      font-size: 1rem;
+    }
+    button {
+      font-size: 1rem;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #888;
+      background: #f0f0f0;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:active {
+      background: #ddd;
+    }
+    #keyboard button {
+      min-width: 48px;
+      padding: 10px 4px;
+    }
+    #trackDisplay {
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      background: #fafafa;
+      border-radius: 6px;
+      padding: 6px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .track-title {
+      font-weight: bold;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ブラウザ作曲スタジオ（3トラック・音色変更・WAV出力）</h1>
+
+  <!-- コントロールパネル -->
+  <div class="panel">
+    <div class="row" style="margin-bottom:6px;">
+      <label>トラック:
+        <select id="trackSelect">
+          <option value="0">トラック1</option>
+          <option value="1">トラック2</option>
+          <option value="2">トラック3</option>
+        </select>
+      </label>
+      <label>音色:
+        <select id="waveformSelect">
+          <option value="sine">sine（やわらかい）</option>
+          <option value="square">square（ピコピコ）</option>
+          <option value="sawtooth">sawtooth（ブーン）</option>
+          <option value="triangle">triangle（やや硬め）</option>
+        </select>
+      </label>
+      <label>BPM:
+        <input type="number" id="bpmInput" value="100" min="40" max="200" style="width:70px;">
+      </label>
+      <label>音の長さ:
+        <select id="durationSelect">
+          <option value="1">1拍（4分音符）</option>
+          <option value="2">2拍（2分音符）</option>
+          <option value="0.5">0.5拍（8分音符）</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button type="button" id="playBtn">▶ 再生</button>
+      <button type="button" id="saveBtn">💾 WAVで保存</button>
+      <button type="button" id="undoBtn">↩ ひとつ戻す</button>
+      <button type="button" id="clearTrackBtn">🧹 このトラックをクリア</button>
+      <button type="button" id="clearAllBtn">🔥 全トラックをクリア</button>
+      <button type="button" id="addRestBtn">⏸ 休符を追加</button>
+    </div>
+  </div>
+
+  <!-- 鍵盤 -->
+  <div class="panel">
+    <div>鍵盤（タップでノートを追加）：</div>
+    <div id="keyboard" class="row" style="margin-top:6px;"></div>
+  </div>
+
+  <!-- トラックの中身表示 -->
+  <div class="panel">
+    <div>現在の楽譜：</div>
+    <div id="trackDisplay"></div>
+  </div>
+
+  <script>
+    // ====== 音階定義（C4〜C5） ======
+    const NOTES = [
+      { name: "C4", freq: 261.63 },
+      { name: "D4", freq: 293.66 },
+      { name: "E4", freq: 329.63 },
+      { name: "F4", freq: 349.23 },
+      { name: "G4", freq: 392.00 },
+      { name: "A4", freq: 440.00 },
+      { name: "B4", freq: 493.88 },
+      { name: "C5", freq: 523.25 }
+    ];
+
+    // ====== トラックデータ ======
+    // 各トラックは {freq, beats, label} の配列
+    const tracks = [[], [], []];
+
+    // ====== UI要素 ======
+    const trackSelect = document.getElementById("trackSelect");
+    const waveformSelect = document.getElementById("waveformSelect");
+    const bpmInput = document.getElementById("bpmInput");
+    const durationSelect = document.getElementById("durationSelect");
+    const trackDisplay = document.getElementById("trackDisplay");
+
+    let bpm = 100; // 初期値
+    function secondsPerBeat() {
+      return 60 / bpm;
+    }
+
+    // ====== iPad用 AudioContext（リアルタイム再生） ======
+    let audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AC();
+      }
+      return audioCtx;
+    }
+
+    // ====== 鍵盤を生成 ======
+    const keyboardDiv = document.getElementById("keyboard");
+    NOTES.forEach(note => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = note.name;
+      btn.addEventListener("click", () => {
+        addNoteToCurrentTrack(note.freq, note.name);
+      });
+      keyboardDiv.appendChild(btn);
+    });
+
+    // ====== トラックにノート追加 ======
+    function addNoteToCurrentTrack(freq, label) {
+      const trackIndex = parseInt(trackSelect.value, 10);
+      const beats = parseFloat(durationSelect.value);
+      tracks[trackIndex].push({ freq, beats, label });
+      updateTrackDisplay();
+    }
+
+    // ====== 休符追加 ======
+    document.getElementById("addRestBtn").addEventListener("click", () => {
+      const trackIndex = parseInt(trackSelect.value, 10);
+      const beats = parseFloat(durationSelect.value);
+      tracks[trackIndex].push({ freq: null, beats, label: "休符" });
+      updateTrackDisplay();
+    });
+
+    // ====== トラック表示更新 ======
+    function updateTrackDisplay() {
+      let text = "";
+      tracks.forEach((track, idx) => {
+        text += `トラック${idx + 1}:\n`;
+        if (track.length === 0) {
+          text += "  （なし）\n\n";
+        } else {
+          text += "  " + track.map(n => n.label).join(" | ") + "\n\n";
+        }
+      });
+      trackDisplay.textContent = text;
+    }
+
+    // ====== BPM変更 ======
+    bpmInput.addEventListener("change", () => {
+      const v = parseInt(bpmInput.value, 10);
+      if (!isNaN(v) && v > 20 && v < 300) {
+        bpm = v;
+      } else {
+        bpm = 100;
+        bpmInput.value = 100;
+      }
+    });
+
+    // ====== ひとつ戻す ======
+    document.getElementById("undoBtn").addEventListener("click", () => {
+      const trackIndex = parseInt(trackSelect.value, 10);
+      tracks[trackIndex].pop();
+      updateTrackDisplay();
+    });
+
+    // ====== このトラックをクリア ======
+    document.getElementById("clearTrackBtn").addEventListener("click", () => {
+      const trackIndex = parseInt(trackSelect.value, 10);
+      tracks[trackIndex] = [];
+      updateTrackDisplay();
+    });
+
+    // ====== 全トラックをクリア ======
+    document.getElementById("clearAllBtn").addEventListener("click", () => {
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i] = [];
+      }
+      updateTrackDisplay();
+    });
+
+    // ====== トラックの総拍数 ======
+    function trackBeats(track) {
+      return track.reduce((sum, n) => sum + n.beats, 0);
+    }
+
+    // ====== リアルタイム再生 ======
+    document.getElementById("playBtn").addEventListener("click", async () => {
+      const ctx = getAudioCtx();
+      if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch (e) { console.error(e); }
+      }
+
+      const wave = waveformSelect.value;
+      const spb = secondsPerBeat();
+
+      tracks.forEach(track => {
+        let t = ctx.currentTime + 0.05; // 一瞬先から
+        track.forEach(n => {
+          const dur = n.beats * spb;
+          if (n.freq) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = wave;
+            osc.frequency.value = n.freq;
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.linearRampToValueAtTime(0.0, t + dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + dur);
+          }
+          t += dur;
+        });
+      });
+    });
+
+    // ====== WAV保存 ======
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const wave = waveformSelect.value;
+      const spb = secondsPerBeat();
+      const sampleRate = 44100;
+
+      // 全トラックの中で一番長い拍数を求める
+      const maxBeats = tracks.reduce((m, tr) => Math.max(m, trackBeats(tr)), 0);
+      if (maxBeats === 0) {
+        alert("楽譜が空です。先にノートを追加してください。");
+        return;
+      }
+      const totalDuration = maxBeats * spb + 0.1;
+
+      const offlineCtx = new OfflineAudioContext(1, sampleRate * totalDuration, sampleRate);
+
+      tracks.forEach(track => {
+        let t = 0;
+        track.forEach(n => {
+          const dur = n.beats * spb;
+          if (n.freq) {
+            const osc = offlineCtx.createOscillator();
+            const gain = offlineCtx.createGain();
+            osc.type = wave;
+            osc.frequency.value = n.freq;
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.linearRampToValueAtTime(0.0, t + dur);
+            osc.connect(gain);
+            gain.connect(offlineCtx.destination);
+            osc.start(t);
+            osc.stop(t + dur);
+          }
+          t += dur;
+        });
+      });
+
+      const buffer = await offlineCtx.startRendering();
+      const wavData = audioBufferToWav(buffer);
+      const blob = new Blob([wavData], { type: "audio/wav" });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "composition.wav";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // ====== AudioBuffer → WAV 変換 ======
+    function audioBufferToWav(buffer) {
+      const numOfChannels = buffer.numberOfChannels;
+      const length = buffer.length * numOfChannels * 2 + 44;
+      const result = new ArrayBuffer(length);
+      const view = new DataView(result);
+
+      function writeString(v, offset, s) {
+        for (let i = 0; i < s.length; i++) {
+          v.setUint8(offset + i, s.charCodeAt(i));
+        }
+      }
+
+      let offset = 0;
+
+      // RIFFヘッダ
+      writeString(view, offset, "RIFF"); offset += 4;
+      view.setUint32(offset, 36 + buffer.length * numOfChannels * 2, true); offset += 4;
+      writeString(view, offset, "WAVE"); offset += 4;
+
+      // fmtチャンク
+      writeString(view, offset, "fmt "); offset += 4;
+      view.setUint32(offset, 16, true); offset += 4;
+      view.setUint16(offset, 1, true); offset += 2; // PCM
+      view.setUint16(offset, numOfChannels, true); offset += 2;
+      view.setUint32(offset, buffer.sampleRate, true); offset += 4;
+      view.setUint32(offset, buffer.sampleRate * numOfChannels * 2, true); offset += 4;
+      view.setUint16(offset, numOfChannels * 2, true); offset += 2;
+      view.setUint16(offset, 16, true); offset += 2; // 16bit
+
+      // dataチャンク
+      writeString(view, offset, "data"); offset += 4;
+      view.setUint32(offset, buffer.length * numOfChannels * 2, true); offset += 4;
+
+      // PCM本体
+      let pos = offset;
+      for (let ch = 0; ch < numOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++, pos += 2) {
+          const s = Math.max(-1, Math.min(1, data[i]));
+          view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+      }
+      return result;
+    }
+
+    // 初期表示更新
+    updateTrackDisplay();
+  </script>
+</body>
+</html>
