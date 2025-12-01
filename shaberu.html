@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>しゃべるアプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h1>しゃべるアプリ</h1>
+  <textarea id="text" rows="3" style="width:100%;">
+こんにちは．100均ロボの世界へようこそ．
+  </textarea>
+  <br />
+  <button id="speakBtn">読み上げる</button>
+
+  <script>
+    document.getElementById("speakBtn").addEventListener("click", () => {
+      const text = document.getElementById("text").value;
+      if (!("speechSynthesis" in window)) {
+        alert("このブラウザは音声読み上げに対応していません。");
+        return;
+      }
+
+      // もし再生中なら止める
+      window.speechSynthesis.cancel();
+
+      const uttr = new SpeechSynthesisUtterance(text);
+      uttr.lang = "ja-JP"; // 日本語指定
+
+      window.speechSynthesis.speak(uttr);
+    });
+  </script>
+</body>
+</html>
