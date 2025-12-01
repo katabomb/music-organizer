@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Web Audio テスト</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h1>Web Audio テスト</h1>
+  <p>ボタンをタップすると「ピーッ」と短い音が出るはずです。</p>
+  <button id="testBtn">テスト音を鳴らす</button>
+
+  <script>
+    let audioCtx = null;
+
+    document.getElementById("testBtn").addEventListener("click", async () => {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) {
+          alert("Web Audio APIに対応していません。");
+          return;
+        }
+        audioCtx = new AC();
+      }
+
+      if (audioCtx.state === "suspended") {
+        try {
+          await audioCtx.resume();
+        } catch (e) {
+          console.error("resume error:", e);
+        }
+      }
+
+      console.log("AudioContext state:", audioCtx.state);
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = "square";       // わかりやすいビービー音
+      osc.frequency.value = 880; // 高めのラの音
+
+      gain.gain.value = 0.2;
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+      }, 300); // 0.3秒で止める
+    });
+  </script>
+</body>
+</html>
