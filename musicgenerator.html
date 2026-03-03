@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Emo Sonata 64 — Auto Composer</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; line-height: 1.5; }
+    .wrap { max-width: 920px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 20px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.05); }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fafafa; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input[type="number"] { width: 110px; padding: 8px 10px; border-radius: 10px; border: 1px solid #ccc; }
+    .small { font-size: 12px; color: #444; }
+    .log { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background:#f7f7f7; border:1px solid #e5e5e5; border-radius:10px; padding:10px; white-space:pre-wrap; }
+    .pill { display:inline-block; padding:3px 8px; border-radius:999px; background:#f0f0ff; border:1px solid #d9d9ff; font-size:12px; margin-right:6px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Emo Sonata 64 — 自動作曲（再生＆WAV書き出し）</h1>
+
+  <div class="card">
+    <div class="row">
+      <button id="btnGenerate">生成（新しい曲）</button>
+      <button id="btnPlay" disabled>再生</button>
+      <button id="btnStop" disabled>停止</button>
+      <button id="btnExport" disabled>WAV書き出し</button>
+    </div>
+
+    <div style="height:10px"></div>
+    <div class="row">
+      <label>Tempo(BPM)
+        <input id="tempo" type="number" min="60" max="140" value="92" />
+      </label>
+      <label>Seed
+        <input id="seed" type="number" min="1" max="99999999" value="20260221" />
+      </label>
+      <span class="small">※ 64小節固定 / ソナタ形式（提示16・展開16・再現16・コーダ16）</span>
+    </div>
+
+    <div style="height:10px"></div>
+    <div class="small">
+      <span class="pill">短調中心(A minor)</span>
+      <span class="pill">4321進行</span>
+      <span class="pill">456進行</span>
+      <span class="pill">テンション(add9/maj7/9/11)</span>
+      <span class="pill">ロングトーン&休符</span>
+      <span class="pill">反復モチーフ</span>
+      <span class="pill">Lo-Fi(ハイカット+ノイズ)</span>
+      <span class="pill">リバーブ&ディレイ</span>
+      <span class="pill">少トラック(4)</span>
+    </div>
+
+    <div id="log" class="log">準備中…（まず「生成」を押してね）</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ----------------------------
+  // Utilities: PRNG (deterministic)
+  // ----------------------------
+  function mulberry32(seed) {
+    let t = seed >>> 0;
+    return function() {
+      t += 0x6D2B79F5;
+      let r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
+  function choice(rng, arr){ return arr[Math.floor(rng()*arr.length)]; }
+
+  // ----------------------------
+  // Music theory helpers
+  // ----------------------------
+  const NOTE_TO_SEMI = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  function midi(noteName) {
+    // e.g. "A4", "C#5"
+    const m = /^([A-G](?:#|b)?)(-?\d+)$/.exec(noteName);
+    if(!m) throw new Error("Bad note: " + noteName);
+    const pitch = NOTE_TO_SEMI[m[1]];
+    const oct = parseInt(m[2],10);
+    return (oct + 1) * 12 + pitch;
+  }
+  function mtof(m){ return 440 * Math.pow(2, (m - 69) / 12); }
+
+  // A natural minor scale degrees (A B C D E F G)
+  const A_MINOR = [midi("A3"), midi("B3"), midi("C4"), midi("D4"), midi("E4"), midi("F4"), midi("G4"),
+                   midi("A4"), midi("B4"), midi("C5"), midi("D5"), midi("E5"), midi("F5"), midi("G5"), midi("A5")];
+
+  function snapToScale(m, scale) {
+    // nearest note in scale
+    let best = scale[0], bestd = 1e9;
+    for (const s of scale) {
+      const d = Math.abs(s - m);
+      if (d < bestd) { bestd = d; best = s; }
+    }
+    return best;
+  }
+
+  // chord builder (triads + optional tensions)
+  function buildChord(rootMidi, quality, tensions=[]) {
+    // quality: "maj", "min", "dim"
+    let intervals = [];
+    if (quality === "maj") intervals = [0,4,7];
+    else if (quality === "min") intervals = [0,3,7];
+    else if (quality === "dim") intervals = [0,3,6];
+    else intervals = [0,4,7];
+
+    const notes = intervals.map(i => rootMidi + i);
+
+    // tensions (as scale-ish): 9, 11, 13, maj7
+    for (const t of tensions) {
+      if (t === "add9" || t === 9) notes.push(rootMidi + 14);
+      else if (t === 11) notes.push(rootMidi + 17);
+      else if (t === 13) notes.push(rootMidi + 21);
+      else if (t === "maj7") notes.push(rootMidi + 11);
+      else if (t === "min7") notes.push(rootMidi + 10);
+    }
+    // de-dup and sort
+    return [...new Set(notes)].sort((a,b)=>a-b);
+  }
+
+  // chord names to root midi in C4 vicinity
+  function rootOf(name) {
+    // ex: "Am", "F", "Em", "Dm", "C", "G"
+    const m = /^([A-G](?:#|b)?)(m|dim)?$/.exec(name);
+    if(!m) throw new Error("Bad chord name: " + name);
+    const n = m[1];
+    // put roots around 3-4 octave for harmony
+    const base = midi(n + "3"); // e.g. A3
+    return {root: base, type: (m[2]==="m" ? "min" : (m[2]==="dim" ? "dim" : "maj"))};
+  }
+
+  // ----------------------------
+  // Piece definition: 64 bars sonata form
+  // ----------------------------
+  const BARS = 64;
+  const BEATS_PER_BAR = 4;
+
+  function makeChordPlan(rng) {
+    // keep the requested "4321" and "456" explicitly, with A minor center + nostalgic C major colors.
+    // 4321 example (F-Em-Dm-C) in C major gives wistful descent; we keep it for Theme A.
+    const themeA = ["F", "Em", "Dm", "C", "F", "Em", "Dm", "C"]; // 8 bars (one chord per bar)
+    // Theme B leans on 456: F-G-Am (in C major / A minor color)
+    const themeB = ["F", "G", "Am", "F", "G", "Am", "Dm", "G"]; // 8 bars, ends with pre-cadence
+
+    // Development: ii–V–I flavors + cliche on Am
+    // We'll do 16 bars: (Dm-G-C) x2, then Am cliche, then sequence back toward Am
+    const dev = [
+      "Dm","G","C","C",
+      "Dm","G","C","Am",
+      // Am cliché (top note feels like descending half-steps)
+      "Am","Am","Am","Am",
+      // Return path (hint E / dominant-ish without forcing full harmonic minor)
+      "F","G","Em","Am"
+    ];
+
+    // Recap: Theme A then Theme B but resolve to Am
+    const recapA = [...themeA];
+    const recapB = ["F","G","Am","F","G","Am","Em","Am"]; // close to tonic
+
+    // Coda: long-tone supportive harmony, final cadence emphasizing Am
+    const coda = ["F","Em","Dm","C","Dm","Em","F","G","Am","G","F","Em","Dm","Em","Am","Am"];
+
+    const chords = [...themeA, ...themeB, ...dev, ...recapA, ...recapB, ...coda];
+    if (chords.length !== 64) throw new Error("Chord plan is not 64 bars: " + chords.length);
+    return chords;
+  }
+
+  function pickTensions(rng, chordName, sectionTag) {
+    // Tension usage: add9/maj7 for floaty, occasional 11th.
+    // Keep algorithmic (probabilistic) but stable.
+    const r = rng();
+    const isMinor = chordName.endsWith("m");
+    const isMaj = !isMinor && !chordName.endsWith("dim");
+    const tens = [];
+
+    // More float in A & Coda, more bite in Dev
+    const p = (sectionTag === "dev") ? 0.55 : (sectionTag === "coda" ? 0.7 : 0.6);
+
+    if (r < p) {
+      tens.push("add9");
+      if (isMaj && rng() < 0.35) tens.push("maj7");
+      if (isMinor && rng() < 0.25) tens.push("min7");
+      if (rng() < 0.18) tens.push(11);
+    }
+    return tens;
+  }
+
+  function barToSection(bar) {
+    // 0-15 expo, 16-31 dev, 32-47 recap, 48-63 coda
+    if (bar < 16) return "expo";
+    if (bar < 32) return "dev";
+    if (bar < 48) return "recap";
+    return "coda";
+  }
+
+  // ----------------------------
+  // Event generation (4 tracks)
+  // ----------------------------
+  // Each event: {tBeats, durBeats, midi, vel, track, type}
+  // track: "pad" (strings), "piano" (arp), "bass", "lead"
+  function generateEvents(seed, tempo) {
+    const rng = mulberry32(seed);
+    const chords = makeChordPlan(rng);
+
+    const events = [];
+    const motif = makeMotif(rng);         // 2-bar motif
+    const motif2 = makeMotif(rng);        // another motif for B theme
+    const recapMotif = motif;             // repeat for nostalgia
+    const scale = A_MINOR;
+
+    for (let bar = 0; bar < BARS; bar++) {
+      const section = barToSection(bar);
+      const chordName = chords[bar];
+      const {root, type} = rootOf(chordName);
+      const tensions = pickTensions(rng, chordName, section);
+      const chordNotes = buildChord(root, type, tensions);
+
+      const t0 = bar * BEATS_PER_BAR;
+
+      // PAD: sustain whole bar (long tone)
+      // Use chord notes in mid register
+      const padNotes = chordNotes.map(n => clamp(n + 12, midi("C3"), midi("C6")));
+      for (const n of padNotes) {
+        events.push({ tBeats: t0, durBeats: 4, midi: n, vel: 0.22, track:"pad" });
+      }
+
+      // BASS: root (sometimes 5th) half-note pattern
+      const bassRoot = clamp(root - 12, midi("E1"), midi("C3"));
+      const bassFifth = clamp(bassRoot + 7, midi("E1"), midi("C3"));
+      const bassSecond = (rng() < 0.25) ? bassFifth : bassRoot;
+      events.push({ tBeats: t0,   durBeats: 2, midi: bassRoot,  vel: 0.26, track:"bass" });
+      events.push({ tBeats: t0+2, durBeats: 2, midi: bassSecond,vel: 0.24, track:"bass" });
+
+      // PIANO ARP: 8th notes, but keep sparse in dev and more in expo/recap/coda
+      const arpDensity = (section === "dev") ? 0.65 : 0.85; // fewer notes in dev
+      for (let step = 0; step < 8; step++) {
+        if (rng() > arpDensity) continue; // rest
+        const t = t0 + step * 0.5;
+        const pick = chordNotes[(step + (rng()<0.5?0:1)) % chordNotes.length] + 12;
+        const note = clamp(pick, midi("C3"), midi("C6"));
+        events.push({ tBeats: t, durBeats: 0.45, midi: note, vel: 0.18, track:"piano" });
+      }
+
+      // LEAD MELODY:
+      // rules: long tones + rests, motif repetition, jump to high notes in Theme B and Coda peaks.
+      const isThemeA = (bar < 8) || (bar >= 32 && bar < 40);
+      const isThemeB = (bar >= 8 && bar < 16) || (bar >= 40 && bar < 48);
+      const isCoda   = (bar >= 48);
+
+      const localMotif = isThemeA ? (bar < 32 ? motif : recapMotif) : (isThemeB ? motif2 : (rng()<0.5?motif:motif2));
+      const leadBarEvents = makeLeadForBar(rng, bar, section, localMotif, chordNotes, scale, {isThemeB, isCoda});
+      for (const e of leadBarEvents) events.push(e);
+    }
+
+    // ensure phrase endings tend to chord tones (esp end of sections)
+    enforceCadences(events, chords);
+
+    return {events, chords, seed, tempo};
+  }
+
+  function makeMotif(rng) {
+    // 2-bar motif as relative scale degrees (in semitone offsets from A4-ish base)
+    // Keep simple & repeatable.
+    const base = midi("A4");
+    const steps = [0,2,3,5,7,8,10,12]; // minor-ish palette
+    const motif = [];
+    // 6 notes over 2 bars with rests
+    for (let i=0;i<6;i++){
+      const off = choice(rng, steps) + (rng()<0.20 ? 12 : 0);
+      motif.push(base + off);
+    }
+    return motif;
+  }
+
+  function makeLeadForBar(rng, bar, section, motif, chordNotes, scale, flags) {
+    const t0 = bar * BEATS_PER_BAR;
+    const out = [];
+
+    // Decide pattern type: long tone + rest OR 2 shorter notes.
+    const longChance = flags.isCoda ? 0.75 : 0.62;
+    const doLong = rng() < longChance;
+
+    // choose target pitch: mostly chord tone, occasionally passing scale tone
+    function pickLeadPitch(i) {
+      let m = motif[(bar + i) % motif.length];
+      // Theme B: jump higher
+      if (flags.isThemeB && rng() < 0.45) m += 7 + (rng()<0.5?0:5); // 6th-9th-ish leaps
+      if (flags.isCoda && rng() < 0.35) m += 12; // coda peak
+      // snap to scale
+      m = snapToScale(m, scale);
+      // bias toward chord tones
+      if (rng() < 0.70) {
+        const cn = choice(rng, chordNotes) + 12; // lead in higher register
+        m = snapToScale(cn, scale);
+      }
+      return clamp(m, midi("E4"), midi("A6"));
+    }
+
+    if (doLong) {
+      // long tone then rest (breathing)
+      const n = pickLeadPitch(0);
+      // place long tone on beat 1 or 2
+      const start = (rng() < 0.6) ? 0 : 1;
+      const dur = (rng() < 0.5) ? 2 : 3; // 2-3 beats
+      out.push({ tBeats: t0 + start, durBeats: dur, midi: n, vel: 0.24, track:"lead" });
+      // (rest is implicit by no event)
+    } else {
+      // two notes with a rest gap
+      const n1 = pickLeadPitch(0);
+      const n2 = pickLeadPitch(1);
+      out.push({ tBeats: t0 + 0.5, durBeats: 1.0, midi: n1, vel: 0.22, track:"lead" });
+      if (rng() < 0.7) {
+        out.push({ tBeats: t0 + 2.5, durBeats: 1.0, midi: n2, vel: 0.23, track:"lead" });
+      } else {
+        out.push({ tBeats: t0 + 3.0, durBeats: 0.9, midi: n2, vel: 0.23, track:"lead" });
+      }
+    }
+
+    return out;
+  }
+
+  function enforceCadences(events, chords) {
+    // Force endings (bar 15,31,47,63) to end on chord tones (esp Am at final).
+    const cadBars = [15,31,47,63];
+    for (const b of cadBars) {
+      const tEnd = (b+1)*BEATS_PER_BAR;
+      // find last lead note event that ends within that bar
+      const inBar = events.filter(e => e.track==="lead" && e.tBeats >= b*4 && e.tBeats < (b+1)*4);
+      if (inBar.length === 0) continue;
+      const last = inBar.reduce((a,c)=> (a.tBeats+a.durBeats < c.tBeats+c.durBeats ? c : a), inBar[0]);
+      const chordName = chords[b];
+      // final bar force Am
+      const targetChord = (b===63) ? "Am" : chordName;
+      const {root, type} = rootOf(targetChord);
+      const chord = buildChord(root, type, ["add9"]);
+      // pick a chord tone in a comfortable lead register
+      const pick = chord.map(n=>n+24).map(n=>clamp(n, midi("E4"), midi("A6")));
+      last.midi = pick[Math.floor(pick.length/2)];
+      last.vel = 0.26;
+      // extend a bit to feel conclusive
+      last.durBeats = clamp(last.durBeats + 0.5, 1.0, 3.5);
+      // ensure it starts no later than beat 3.5
+      last.tBeats = Math.min(last.tBeats, b*4 + 2.5);
+    }
+  }
+
+  // ----------------------------
+  // Audio: scheduling + FX chain
+  // ----------------------------
+  function createImpulseResponse(ctx, seconds=2.2, decay=2.4) {
+    const rate = ctx.sampleRate;
+    const length = Math.floor(seconds * rate);
+    const ir = ctx.createBuffer(2, length, rate);
+    for (let ch=0; ch<2; ch++){
+      const data = ir.getChannelData(ch);
+      for (let i=0; i<length; i++){
+        const t = i / rate;
+        const amp = Math.pow(1 - i/length, decay);
+        data[i] = (Math.random()*2 - 1) * amp;
+      }
+    }
+    return ir;
+  }
+
+  function makeMasterChain(ctx) {
+    // master -> hi-cut -> delay -> reverb -> out
+    const input = ctx.createGain();
+    input.gain.value = 0.9;
+
+    const hicut = ctx.createBiquadFilter();
+    hicut.type = "lowpass";
+    hicut.frequency.value = 5200;
+    hicut.Q.value = 0.2;
+
+    const delay = ctx.createDelay(1.0);
+    delay.delayTime.value = 0.26; // subtle
+    const fb = ctx.createGain();
+    fb.gain.value = 0.22;
+    delay.connect(fb);
+    fb.connect(delay);
+
+    const wetDelay = ctx.createGain();
+    wetDelay.gain.value = 0.18;
+
+    const conv = ctx.createConvolver();
+    conv.buffer = createImpulseResponse(ctx, 2.4, 2.6);
+    const wetRev = ctx.createGain();
+    wetRev.gain.value = 0.35;
+
+    const dry = ctx.createGain();
+    dry.gain.value = 0.85;
+
+    // wiring
+    input.connect(hicut);
+
+    hicut.connect(dry);
+
+    hicut.connect(delay);
+    delay.connect(wetDelay);
+
+    hicut.connect(conv);
+    conv.connect(wetRev);
+
+    const out = ctx.createGain();
+    out.gain.value = 0.95;
+
+    dry.connect(out);
+    wetDelay.connect(out);
+    wetRev.connect(out);
+
+    return {input, out};
+  }
+
+  function voiceNode(ctx, kind) {
+    // returns {oscType, filter?, baseGain, attack, decay, sustain, release}
+    if (kind === "pad")   return {oscType:"sawtooth",  cutoff:2400, baseGain:0.45, A:0.08, D:0.25, S:0.75, R:0.55};
+    if (kind === "piano") return {oscType:"triangle",  cutoff:4800, baseGain:0.55, A:0.005,D:0.12, S:0.00, R:0.18};
+    if (kind === "bass")  return {oscType:"sine",      cutoff:1200, baseGain:0.70, A:0.01, D:0.12, S:0.55, R:0.15};
+    // lead
+    return {oscType:"square", cutoff:3800, baseGain:0.50, A:0.01, D:0.10, S:0.55, R:0.22};
+  }
+
+  function scheduleNote(ctx, dest, when, durSec, freq, vel, kind, activeList) {
+    const v = voiceNode(ctx, kind);
+
+    const osc = ctx.createOscillator();
+    osc.type = v.oscType;
+    osc.frequency.setValueAtTime(freq, when);
+
+    // subtle vibrato for lead
+    let lfo=null, lfoGain=null;
+    if (kind === "lead") {
+      lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = 5.4;
+      lfoGain = ctx.createGain();
+      lfoGain.gain.value = 6; // cents-ish effect (approx, by Hz on mid range)
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+    }
+
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.value = v.cutoff;
+    filt.Q.value = (kind==="piano") ? 0.2 : 0.35;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+
+    const peak = v.baseGain * vel;
+    const A = v.A, D = v.D, S = v.S, R = v.R;
+
+    // ADSR
+    g.gain.linearRampToValueAtTime(peak, when + A);
+    g.gain.linearRampToValueAtTime(peak * (S + 0.0001), when + A + D);
+    // sustain until note end
+    const tRel = when + Math.max(0.02, durSec);
+    g.gain.setValueAtTime(peak * (S + 0.0001), tRel);
+    g.gain.linearRampToValueAtTime(0.0001, tRel + R);
+
+    osc.connect(filt);
+    filt.connect(g);
+    g.connect(dest);
+
+    // start/stop
+    osc.start(when);
+    osc.stop(tRel + R + 0.02);
+
+    if (lfo) { lfo.start(when); lfo.stop(tRel + R + 0.02); }
+
+    activeList.push(osc);
+    if (lfo) activeList.push(lfo);
+  }
+
+  function scheduleNoise(ctx, dest, start, durationSec, activeList) {
+    // soft vinyl-like noise for Lo-Fi nostalgia
+    const rate = ctx.sampleRate;
+    const len = Math.floor(durationSec * rate);
+    const buf = ctx.createBuffer(1, len, rate);
+    const d = buf.getChannelData(0);
+    for (let i=0;i<len;i++){
+      // pink-ish-ish: simple lowpass on white by integration
+      const w = (Math.random()*2-1) * 0.08;
+      d[i] = w;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.value = 1800;
+
+    const g = ctx.createGain();
+    g.gain.value = 0.02;
+
+    src.connect(filt);
+    filt.connect(g);
+    g.connect(dest);
+
+    src.start(start);
+    src.stop(start + durationSec + 0.05);
+    activeList.push(src);
+  }
+
+  function schedulePiece(ctx, piece, masterIn, startTime, activeList) {
+    const tempo = piece.tempo;
+    const secPerBeat = 60 / tempo;
+    const totalBeats = BARS * BEATS_PER_BAR;
+    const totalSec = totalBeats * secPerBeat;
+
+    // add gentle noise (Lo-Fi)
+    scheduleNoise(ctx, masterIn, startTime, totalSec, activeList);
+
+    // schedule musical events
+    for (const e of piece.events) {
+      const when = startTime + e.tBeats * secPerBeat;
+      const dur = e.durBeats * secPerBeat;
+      const f = mtof(e.midi);
+      scheduleNote(ctx, masterIn, when, dur, f, e.vel, e.track, activeList);
+    }
+    return totalSec;
+  }
+
+  // ----------------------------
+  // WAV export
+  // ----------------------------
+  function encodeWAVFromAudioBuffer(audioBuffer) {
+    const numCh = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+
+    // interleave
+    const interleaved = new Float32Array(length * numCh);
+    for (let i=0;i<length;i++){
+      for (let ch=0; ch<numCh; ch++){
+        interleaved[i*numCh + ch] = audioBuffer.getChannelData(ch)[i];
+      }
+    }
+
+    // 16-bit PCM
+    const bytesPerSample = 2;
+    const blockAlign = numCh * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = interleaved.length * bytesPerSample;
+
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    function writeString(off, s){
+      for(let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i));
+    }
+
+    // RIFF header
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, "WAVE");
+
+    // fmt chunk
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);          // PCM fmt chunk size
+    view.setUint16(20, 1, true);           // audio format = PCM
+    view.setUint16(22, numCh, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);          // bits per sample
+
+    // data chunk
+    writeString(36, "data");
+    view.setUint32(40, dataSize, true);
+
+    // PCM samples
+    let offset = 44;
+    for (let i=0;i<interleaved.length;i++){
+      let s = interleaved[i];
+      s = Math.max(-1, Math.min(1, s));
+      const v = (s < 0) ? (s * 0x8000) : (s * 0x7FFF);
+      view.setInt16(offset, v, true);
+      offset += 2;
+    }
+
+    return new Blob([buffer], {type:"audio/wav"});
+  }
+
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  }
+
+  // ----------------------------
+  // UI state + actions
+  // ----------------------------
+  const $ = (id)=>document.getElementById(id);
+  const logEl = $("log");
+
+  let currentPiece = null;
+  let audioCtx = null;
+  let activeNodes = [];
+  let isPlaying = false;
+
+  function log(msg){ logEl.textContent = msg; }
+
+  function ensureAudioContext() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+
+  function stopNow() {
+    // Stop all active sources/oscillators safely
+    for (const n of activeNodes) {
+      try { if (typeof n.stop === "function") n.stop(); } catch(_) {}
+    }
+    activeNodes = [];
+    isPlaying = false;
+    $("btnStop").disabled = true;
+    $("btnPlay").disabled = !currentPiece;
+    log("停止しました。");
+  }
+
+  function summarize(piece) {
+    const tempo = piece.tempo;
+    const seed = piece.seed;
+    // show key sections quickly
+    const head = piece.chords.slice(0,16).join(" ");
+    const dev  = piece.chords.slice(16,32).join(" ");
+    const rec  = piece.chords.slice(32,48).join(" ");
+    const cod  = piece.chords.slice(48,64).join(" ");
+    return [
+      `生成完了 ✅  Seed=${seed}  Tempo=${tempo}BPM`,
+      `提示部(1-16):  ${head}`,
+      `展開部(17-32): ${dev}`,
+      `再現部(33-48): ${rec}`,
+      `コーダ(49-64): ${cod}`,
+      ``,
+      `ルール適用: 短調中心 / 4321(F-Em-Dm-C) / 456(F-G-Am) / add9・maj7等 / ロングトーン＋休符 / モチーフ反復 / Lo-Fi(ハイカット＋ノイズ) / ディレイ＋リバーブ / 4トラック`,
+    ].join("\n");
+  }
+
+  $("btnGenerate").addEventListener("click", async () => {
+    const tempo = clamp(parseInt($("tempo").value,10)||92, 60, 140);
+    const seed = clamp(parseInt($("seed").value,10)||20260221, 1, 99999999);
+
+    currentPiece = generateEvents(seed, tempo);
+    $("btnPlay").disabled = false;
+    $("btnExport").disabled = false;
+    $("btnStop").disabled = true;
+
+    log(summarize(currentPiece));
+  });
+
+  $("btnPlay").addEventListener("click", async () => {
+    if (!currentPiece) return;
+    if (isPlaying) return;
+
+    const ctx = ensureAudioContext();
+    // iOS/Chrome policies: resume on gesture
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const chain = makeMasterChain(ctx);
+    chain.out.connect(ctx.destination);
+
+    // schedule from slightly in the future
+    const startTime = ctx.currentTime + 0.08;
+
+    activeNodes = [];
+    const totalSec = schedulePiece(ctx, currentPiece, chain.input, startTime, activeNodes);
+
+    isPlaying = true;
+    $("btnPlay").disabled = true;
+    $("btnStop").disabled = false;
+
+    log(summarize(currentPiece) + `\n\n再生中…（約 ${totalSec.toFixed(1)} 秒）`);
+
+    // auto-reset after finish
+    setTimeout(() => {
+      if (!isPlaying) return;
+      isPlaying = false;
+      $("btnStop").disabled = true;
+      $("btnPlay").disabled = !currentPiece;
+      log(summarize(currentPiece) + "\n\n再生完了 🎧");
+    }, Math.ceil((totalSec + 0.5) * 1000));
+  });
+
+  $("btnStop").addEventListener("click", () => stopNow());
+
+  $("btnExport").addEventListener("click", async () => {
+    if (!currentPiece) return;
+
+    // If currently playing, stop first to avoid confusion
+    if (isPlaying) stopNow();
+
+    const tempo = currentPiece.tempo;
+    const secPerBeat = 60 / tempo;
+    const totalSec = BARS * BEATS_PER_BAR * secPerBeat;
+
+    // Offline render for reliable WAV
+    const sampleRate = 44100;
+    const length = Math.ceil((totalSec + 1.0) * sampleRate);
+    const offline = new OfflineAudioContext(2, length, sampleRate);
+
+    const chain = makeMasterChain(offline);
+    chain.out.connect(offline.destination);
+
+    const active = [];
+    schedulePiece(offline, currentPiece, chain.input, 0.05, active);
+
+    log(summarize(currentPiece) + "\n\nWAV書き出し中…（オフラインレンダリング）");
+
+    const rendered = await offline.startRendering();
+    const blob = encodeWAVFromAudioBuffer(rendered);
+    const fname = `emo_sonata64_seed${currentPiece.seed}_bpm${currentPiece.tempo}.wav`;
+    downloadBlob(blob, fname);
+
+    log(summarize(currentPiece) + `\n\nWAVを書き出しました ✅  (${fname})`);
+  });
+
+  // initial log
+  log("準備OK。まず「生成（新しい曲）」を押してね😊");
+})();
+</script>
+</body>
+</html>
