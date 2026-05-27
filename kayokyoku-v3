@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMOI — 歌謡曲ジェネレーター</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;700;900&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap');
+:root{
+  --bg:#0d0d0f;--surface:#13131a;--border:rgba(255,255,255,0.07);
+  --text:#e8e4dc;--muted:rgba(232,228,220,0.35);
+  --accent:#e8624a;--accent2:#5bb8d4;--gold:#d4a843;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100vh;overflow-x:hidden;}
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");pointer-events:none;z-index:999;}
+.shell{max-width:720px;margin:0 auto;padding:48px 24px 100px;}
+.hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:48px;border-bottom:1px solid var(--border);padding-bottom:20px;}
+.logo{font-family:'Zen Old Mincho',serif;font-size:2.4rem;font-weight:900;letter-spacing:-0.04em;line-height:1;}
+.logo em{color:var(--accent);font-style:normal;}
+.tagline{font-size:0.65rem;letter-spacing:0.25em;color:var(--muted);margin-top:6px;text-transform:uppercase;}
+.hd-right{text-align:right;}
+.hd-sub{font-size:0.6rem;letter-spacing:0.15em;color:var(--muted);}
+.id-panel{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:20px 24px;margin-bottom:28px;display:flex;gap:12px;align-items:center;}
+.id-label{font-size:0.6rem;letter-spacing:0.2em;color:var(--muted);white-space:nowrap;text-transform:uppercase;}
+.id-input{flex:1;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:3px;color:var(--accent2);font-family:'DM Mono',monospace;font-size:1rem;letter-spacing:0.15em;padding:10px 14px;transition:border-color .2s;}
+.id-input:focus{outline:none;border-color:var(--accent2);}
+.id-input::placeholder{color:rgba(255,255,255,0.15);}
+.btn-load{padding:10px 18px;background:transparent;border:1px solid var(--accent2);color:var(--accent2);font-family:'DM Mono',monospace;font-size:0.7rem;letter-spacing:0.15em;cursor:pointer;border-radius:3px;transition:all .2s;white-space:nowrap;}
+.btn-load:hover{background:var(--accent2);color:var(--bg);}
+.btn-gen{width:100%;padding:22px;background:var(--accent);border:none;color:#fff;font-family:'Zen Old Mincho',serif;font-size:1.3rem;font-weight:700;letter-spacing:0.1em;cursor:pointer;border-radius:4px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s;margin-bottom:28px;}
+.btn-gen::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.12) 0%,transparent 60%);}
+.btn-gen:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(232,98,74,0.4);}
+.btn-gen:active{transform:translateY(0);}
+.btn-gen:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+.song-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:20px;transition:box-shadow .3s;}
+.song-card.active{border-color:rgba(232,98,74,0.3);box-shadow:0 0 40px rgba(232,98,74,0.08);}
+.card-top{padding:24px 28px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}
+.song-title{font-family:'Zen Old Mincho',serif;font-size:1.55rem;font-weight:700;letter-spacing:-0.02em;line-height:1.2;}
+.song-id-badge{font-family:'DM Mono',monospace;font-size:0.65rem;letter-spacing:0.12em;color:var(--accent2);background:rgba(91,184,212,0.08);border:1px solid rgba(91,184,212,0.2);border-radius:3px;padding:5px 10px;white-space:nowrap;flex-shrink:0;}
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--border);}
+.info-cell{padding:14px 20px;border-right:1px solid var(--border);}
+.info-cell:last-child{border-right:none;}
+.info-key{font-size:0.55rem;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;margin-bottom:5px;}
+.info-val{font-size:0.85rem;letter-spacing:0.05em;}
+.emo-tags{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;}
+.emo-tag{font-size:0.58rem;letter-spacing:0.1em;padding:3px 9px;border-radius:2px;transition:all .2s;}
+.emo-tag.on{background:rgba(212,168,67,0.12);border:1px solid rgba(212,168,67,0.3);color:var(--gold);}
+.emo-tag.off{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.18);text-decoration:line-through;}
+.viz-wrap{padding:16px 20px 10px;}
+canvas#vis{width:100%;height:72px;display:block;border-radius:2px;background:#0a0a0c;}
+.time-row{display:flex;justify-content:space-between;font-size:0.62rem;color:var(--muted);margin-top:5px;letter-spacing:0.08em;}
+.track-row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.track-cell{padding:12px 16px;border-right:1px solid var(--border);display:flex;align-items:center;gap:8px;transition:background .3s;}
+.track-cell:last-child{border-right:none;}
+.track-cell.lit{background:rgba(232,98,74,0.06);}
+.track-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.1);flex-shrink:0;transition:background .3s,box-shadow .3s;}
+.track-cell.lit .track-dot{background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink .7s ease-in-out infinite alternate;}
+@keyframes blink{from{opacity:1;transform:scale(1);}to{opacity:.5;transform:scale(1.6);}}
+.track-label{font-size:0.62rem;letter-spacing:0.1em;color:var(--muted);}
+.ctrl-row{display:flex;align-items:center;gap:14px;padding:16px 20px;}
+.btn-play{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0;}
+.btn-play:hover{background:var(--accent);color:#fff;}
+.btn-play:disabled{opacity:.3;cursor:not-allowed;}
+.btn-play svg{width:16px;height:16px;}
+.prog-wrap{flex:1;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;cursor:pointer;position:relative;}
+.prog-bar{height:100%;width:0%;background:var(--accent);border-radius:2px;pointer-events:none;transition:width .1s linear;}
+.save-row{display:flex;gap:10px;padding:0 20px 20px;}
+.btn-save{flex:1;padding:12px;background:transparent;border:1px solid rgba(255,255,255,0.12);color:var(--muted);font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.15em;cursor:pointer;border-radius:3px;transition:all .2s;}
+.btn-save:hover{border-color:var(--text);color:var(--text);}
+.btn-save:disabled{opacity:.25;cursor:not-allowed;}
+.status{text-align:center;font-size:0.65rem;letter-spacing:0.15em;color:var(--muted);padding:16px 0;min-height:36px;}
+.status.ok{color:var(--accent);}
+.feat-count{font-size:0.7rem;letter-spacing:0.08em;color:var(--muted);padding:0 20px 14px;text-align:right;}
+.feat-count span{color:var(--gold);}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="hd">
+    <div class="hd-left">
+      <div class="logo"><em>EMOI</em> 歌謡曲</div>
+      <div class="tagline">Instrumental Generator — Up to 20 Emotional Features</div>
+    </div>
+    <div class="hd-right">
+      <div class="hd-sub">Pure Web Audio API</div>
+      <div class="hd-sub" style="margin-top:3px">No samples · Browser only</div>
+    </div>
+  </div>
+
+  <div class="id-panel">
+    <span class="id-label">ID 再生</span>
+    <input class="id-input" id="idInput" type="text" placeholder="202506151430（12桁）" maxlength="12">
+    <button class="btn-load" onclick="loadById()">読み込む</button>
+  </div>
+
+  <button class="btn-gen" id="btnGen" onclick="generate()">✦ 新しい曲を作曲する</button>
+
+  <div class="song-card" id="songCard">
+    <div class="card-top">
+      <div class="song-title" id="songTitle">── 未生成 ──</div>
+      <div class="song-id-badge" id="songIdBadge">ID: ────────────</div>
+    </div>
+    <div class="info-grid">
+      <div class="info-cell"><div class="info-key">雰囲気</div><div class="info-val" id="infoMood">—</div></div>
+      <div class="info-cell"><div class="info-key">テンポ</div><div class="info-val" id="infoTempo">—</div></div>
+      <div class="info-cell"><div class="info-key">調</div><div class="info-val" id="infoKey">—</div></div>
+    </div>
+    <div class="info-grid" style="border-top:none">
+      <div class="info-cell"><div class="info-key">進行</div><div class="info-val" id="infoChord">—</div></div>
+      <div class="info-cell"><div class="info-key">転調</div><div class="info-val" id="infoModkey">—</div></div>
+      <div class="info-cell"><div class="info-key">長さ</div><div class="info-val" id="infoDur">—</div></div>
+    </div>
+    <div class="emo-tags" id="emoTags"></div>
+    <div class="feat-count" id="featCount"></div>
+    <div class="viz-wrap">
+      <canvas id="vis" width="640" height="72"></canvas>
+      <div class="time-row"><span id="timeNow">0:00</span><span id="timeTot">—</span></div>
+    </div>
+    <div class="track-row">
+      <div class="track-cell" id="tr-mel"><div class="track-dot"></div><span class="track-label">主旋律</span></div>
+      <div class="track-cell" id="tr-gtr"><div class="track-dot"></div><span class="track-label">ギター</span></div>
+      <div class="track-cell" id="tr-bas"><div class="track-dot"></div><span class="track-label">ベース</span></div>
+      <div class="track-cell" id="tr-per"><div class="track-dot"></div><span class="track-label">パーカッション</span></div>
+    </div>
+    <div class="ctrl-row">
+      <button class="btn-play" id="btnPlay" disabled onclick="togglePlay()">
+        <svg id="playIco" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      </button>
+      <div class="prog-wrap" id="progWrap"><div class="prog-bar" id="progBar"></div></div>
+    </div>
+    <div class="save-row">
+      <button class="btn-save" id="btnSave" disabled onclick="saveSong()">▾ WAV で保存</button>
+      <button class="btn-save" id="btnCopyId" disabled onclick="copyId()">⊞ IDをコピー</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">曲IDを入力するか「新しい曲を作曲する」を押してください</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════
+const SR = 44100;
+const DURATION = 250; // up to ~4 min 10 sec
+
+const FEATURES = [
+  { id:'minor',   label:'マイナーキー' },
+  { id:'descent', label:'半音下降進行' },
+  { id:'vib',     label:'ビブラート' },
+  { id:'synco',   label:'シンコペーション' },
+  { id:'reverb',  label:'深いリバーブ' },
+  { id:'walk',    label:'ウォーキングベース' },
+  { id:'arp',     label:'ギターアルペジオ' },
+  { id:'dyn',     label:'ダイナミクス変化' },
+  { id:'octjump', label:'オクターブ跳躍' },
+  { id:'auftak',  label:'弱起フレーズ' },
+  { id:'modkey',  label:'サビ転調' },
+  { id:'piano',   label:'ピアノパッド' },
+  { id:'cresc',   label:'クレッシェンド' },
+  { id:'strings', label:'ストリングス' },
+  { id:'harm',    label:'3度ハーモニー' },
+  { id:'break',   label:'ブレイク（休止）' },
+  { id:'fill',    label:'ドラムフィル' },
+  { id:'fade',    label:'フェードアウト' },
+  { id:'chroma',  label:'クロマチック音' },
+  { id:'delay',   label:'エコー・ディレイ' },
+];
+const FEAT_IDS = FEATURES.map(f=>f.id);
+
+// Modulation types: [semitone shift, display label]
+const MODKEY_TYPES = [
+  [2,  '全音上（＋2）'],
+  [3,  '短3度上（平行長調）'],
+  [5,  '4度上（下属調）'],
+  [7,  '5度上（属調）'],
+  [-2, '全音下（－2）'],
+];
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const MOOD_NAMES = { melancholy:'哀愁', dramatic:'劇的', nostalgic:'懐かしい', romantic:'切ない恋' };
+const CHORD_NAMES = {
+  i_vi_III_VII:'i-VI-III-VII',
+  i_iv_VII_III:'i-iv-VII-III',
+  i_VII_VI_VII:'i-VII-VI-VII（半音下降）',
+  ii_V_I_VI:   'ii-V-I-VI（歌謡進行）',
+};
+const TITLE_PARTS = {
+  melancholy:[['さよなら','雨の中','夜明け前','哀しみの','遠い'],['詩','駅','影','あなたへ','記憶']],
+  dramatic:  [['炎の','嵐の','叫ぶ','燃える','壊れた'],['季節','心','夜','愛','旋律']],
+  nostalgic: [['昭和の','懐かしい','あの頃の','遠い日の','秋の'],['残り香','メロディー','風景','思い出','光']],
+  romantic:  [['初恋の','甘い','桜色の','永遠の','君への'],['予感','ため息','夢','誓い','想い']],
+};
+
+// ═══════════════════════════════════════════════════
+//  ID / SEED
+// ═══════════════════════════════════════════════════
+function makeId(){
+  const n=new Date(), p=(v,l=2)=>String(v).padStart(l,'0');
+  const base=String(n.getFullYear()).slice(-2)+p(n.getMonth()+1)+p(n.getDate())+p(n.getHours())+p(n.getMinutes());
+  let h=0; for(let i=0;i<base.length;i++) h=(h*31+parseInt(base[i]))%100;
+  return base+p(h);
+}
+function idToSeed(id12){
+  if(!/^\d{12}$/.test(id12)) return null;
+  const base=id12.slice(0,10), check=parseInt(id12.slice(10));
+  let h=0; for(let i=0;i<base.length;i++) h=(h*31+parseInt(base[i]))%100;
+  return h===check ? parseInt(base) : null;
+}
+function mkRng(seed){
+  let s=seed>>>0;
+  return ()=>{
+    s+=0x6D2B79F5; let t=s;
+    t=Math.imul(t^t>>>15,t|1);
+    t^=t+Math.imul(t^t>>>7,t|61);
+    return((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+// ═══════════════════════════════════════════════════
+//  FEATURE SELECTION — always 10..20 active
+// ═══════════════════════════════════════════════════
+function selectFeatures(rng){
+  const ids=[...FEAT_IDS];
+  for(let i=ids.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]];}
+  const mandatory=['minor','reverb','vib','dyn'];
+  const optional=ids.filter(id=>!mandatory.includes(id));
+  const extraCount=6+Math.floor(rng()*11);
+  return new Set([...mandatory,...optional.slice(0,extraCount)]);
+}
+
+// ═══════════════════════════════════════════════════
+//  PARAMS
+// ═══════════════════════════════════════════════════
+function deriveParams(seed){
+  const rng=mkRng(seed);
+  const moods=Object.keys(MOOD_NAMES);
+  const mood=moods[Math.floor(rng()*moods.length)];
+  const tempoBase={dramatic:92,romantic:70,nostalgic:76,melancholy:66}[mood];
+  const bpm=tempoBase+Math.floor(rng()*16)-8;
+  const rootMidi=57+Math.floor(rng()*5);
+  const chordTypes=Object.keys(CHORD_NAMES);
+  const chordType=chordTypes[Math.floor(rng()*chordTypes.length)];
+  const titleIdx=Math.floor(rng()*999);
+  const features=selectFeatures(rng);
+  // Modulation type for chorus (only matters if modkey feature active)
+  const modkeyIdx=Math.floor(rng()*MODKEY_TYPES.length);
+  return{mood,bpm,rootMidi,chordType,titleIdx,features,modkeyIdx,seed};
+}
+function makeTitle(mood,idx,rng2){
+  const[p1,p2]=TITLE_PARTS[mood];
+  return p1[idx%p1.length]+p2[Math.floor(rng2()*p2.length)];
+}
+
+// ═══════════════════════════════════════════════════
+//  CHORD PROGRESSIONS
+// ═══════════════════════════════════════════════════
+function getProgression(chordType,root){
+  const M=[0,4,7],m=[0,3,7],dom=[0,4,7,10];
+  const progs={
+    i_vi_III_VII:[[m,0],[M,8],[M,3],[M,10]],
+    i_iv_VII_III:[[m,0],[m,5],[M,10],[M,3]],
+    i_VII_VI_VII:[[m,0],[M,10],[M,8],[M,10]],
+    ii_V_I_VI:   [[m,2],[dom,7],[M,0],[m,9]],
+  };
+  return progs[chordType].map(([q,iv])=>({root:root+iv,notes:q.map(n=>root+iv+n)}));
+}
+
+// ═══════════════════════════════════════════════════
+//  SYNTHESIS
+// ═══════════════════════════════════════════════════
+const freq=m=>440*Math.pow(2,(m-69)/12);
+
+function env(t,atk,dec,sus,rel,total){
+  if(t<atk) return t/atk;
+  if(t<atk+dec) return 1-(1-sus)*(t-atk)/dec;
+  if(t<total-rel) return sus;
+  return Math.max(0,sus*(1-(t-(total-rel))/rel));
+}
+
+function write(buf,offset,dur,fn){
+  const start=Math.floor(offset*SR);
+  for(let i=0;i<Math.floor(dur*SR);i++){
+    const idx=start+i; if(idx>=0&&idx<buf.length) buf[idx]+=fn(i/SR,dur);
+  }
+}
+
+// ── MELODY with natural vibrato ──────────────────
+// Key fix: vibrato starts late, grows slowly, depth very subtle (0.004),
+// rate 5.2Hz (human-like), shaped with smooth onset curve — no comic wobble.
+function writeMelody(buf,offset,dur,midi,amp,useVib,useHarm){
+  const f0=freq(midi), f3=useHarm?freq(midi+4):0;
+  write(buf,offset,dur,(t,total)=>{
+    const e=env(t,0.05,0.12,0.78,0.20,total);
+    let vibMod=0;
+    if(useVib&&t>0.18){
+      // smooth onset: ramps from 0 over 0.25s after vibrato start
+      const vibOnset=Math.min(1,(t-0.18)/0.25);
+      // very gentle sinusoidal depth — 0.004 = ±0.4% pitch, barely perceptible but warm
+      vibMod=Math.sin(2*Math.PI*5.2*(t-0.18))*0.004*vibOnset;
+    }
+    const f=f0*(1+vibMod);
+    let s=
+      Math.sin(2*Math.PI*f*t)*0.52+
+      Math.sin(4*Math.PI*f*t)*0.22+
+      Math.sin(6*Math.PI*f*t)*0.11+
+      Math.sin(8*Math.PI*f*t)*0.04+
+      Math.sin(Math.PI*f*t)*0.06; // sub for warmth
+    if(useHarm&&f3>0)
+      s+=(Math.sin(2*Math.PI*f3*t)*0.26+Math.sin(4*Math.PI*f3*t)*0.10)*0.48;
+    return s*e*amp;
+  });
+}
+
+function writePiano(buf,offset,dur,midi,amp){
+  const f0=freq(midi);
+  write(buf,offset,dur,(t,total)=>{
+    const e=env(t,0.008,0.25,0.3,0.3,total);
+    return(Math.sin(2*Math.PI*f0*t)*0.5+Math.sin(4*Math.PI*f0*t)*0.3+
+           Math.sin(6*Math.PI*f0*t)*0.15+Math.sin(8*Math.PI*f0*t)*0.05)*e*amp;
+  });
+}
+
+function writeStrings(buf,offset,dur,notes,amp){
+  notes.forEach((m,i2)=>{
+    const f0=freq(m), det=1+(i2%2===0?0.004:-0.004);
+    write(buf,offset,dur,(t,total)=>{
+      const e=env(t,0.35,0.1,0.85,0.5,total);
+      return(Math.sin(2*Math.PI*f0*det*t)*0.4+Math.sin(4*Math.PI*f0*det*t)*0.25+
+             Math.sin(6*Math.PI*f0*det*t)*0.15+(Math.random()-0.5)*0.014*e)*e*amp;
+    });
+  });
+}
+
+function writeGuitar(buf,offset,dur,notes,amp){
+  notes.forEach((m,si)=>{
+    const f0=freq(m), det=1+(si%2===0?0.002:-0.003);
+    write(buf,offset+si*0.014,dur,(t,total)=>{
+      const e=env(t,0.005,0.14,0.35,0.3,total);
+      return(Math.sin(2*Math.PI*f0*det*t)*0.45+Math.sin(4*Math.PI*f0*det*t)*0.28+
+             Math.sin(6*Math.PI*f0*det*t)*0.14+(Math.random()-0.5)*0.018*Math.exp(-t*50))*e*amp;
+    });
+  });
+}
+
+function writeArp(buf,offset,dur,midi,amp){
+  const f0=freq(midi);
+  write(buf,offset,dur,(t,total)=>{
+    const e=env(t,0.005,0.2,0.2,0.1,total);
+    return(Math.sin(2*Math.PI*f0*t)*0.5+Math.sin(4*Math.PI*f0*t)*0.25+
+           (Math.random()-0.5)*0.012*Math.exp(-t*40))*e*amp;
+  });
+}
+
+function writeBass(buf,offset,dur,midi,amp){
+  const f0=freq(midi);
+  write(buf,offset,dur,(t,total)=>{
+    const e=env(t,0.02,0.08,0.9,0.06,total);
+    return(Math.sin(2*Math.PI*f0*t)*0.65+Math.sin(4*Math.PI*f0*t)*0.22+
+           Math.sin(6*Math.PI*f0*t)*0.08+Math.tanh(Math.sin(2*Math.PI*f0*t)*1.8)*0.07)*e*amp;
+  });
+}
+
+function writeKick(buf,offset,amp){
+  write(buf,offset,0.55,(t)=>{
+    const e=Math.exp(-t*18), pe=Math.exp(-t*32);
+    return(Math.sin(2*Math.PI*(55+200*pe)*t)*0.85+(Math.random()-0.5)*0.12*Math.exp(-t*90))*e*amp;
+  });
+}
+function writeSnare(buf,offset,amp){
+  write(buf,offset,0.2,(t)=>{
+    return(Math.sin(2*Math.PI*200*t)*0.3+(Math.random()-0.5)*0.95)*Math.exp(-t*28)*amp;
+  });
+}
+function writeHH(buf,offset,amp,open=false){
+  write(buf,offset,open?0.22:0.06,(t)=>{
+    return(Math.random()-0.5)*2*0.7*Math.exp(-t*(open?16:55))*amp;
+  });
+}
+function writeFill(buf,barStart,beatDur){
+  [0,0.25,0.5,0.625,0.75,0.875].forEach((b,i)=>{
+    writeSnare(buf,barStart+b*beatDur*2,0.28+i*0.04);
+    writeHH(buf,barStart+b*beatDur*2,0.12);
+  });
+}
+
+function applyReverb(buf,amount=0.22,decay=0.52){
+  const dl=Math.floor(SR*0.048), fb=new Float32Array(dl);
+  for(let i=0;i<buf.length;i++){const d=fb[i%dl];fb[i%dl]=buf[i]+d*decay;buf[i]+=d*amount;}
+  const dl2=Math.floor(SR*0.031), fb2=new Float32Array(dl2);
+  for(let i=0;i<buf.length;i++){const d=fb2[i%dl2];fb2[i%dl2]=buf[i]+d*(decay*0.7);buf[i]+=d*(amount*0.5);}
+}
+function applyDelay(buf,ms,fbAmt,mix){
+  const dl=Math.floor(SR*ms/1000), db=new Float32Array(buf.length);
+  for(let i=0;i<buf.length;i++){db[i]=buf[i]+(i>=dl?db[i-dl]*fbAmt:0);buf[i]+=db[i]*mix;}
+}
+
+// ═══════════════════════════════════════════════════
+//  COMPOSER  (~4 min structure)
+//  イントロ(4) - A(8) - B(8) - A(8) - B(8) - Bridge(6) - A'(8) - B(8) - B+1(8) - Outro(6)
+//  = 72 bars.  At ♩=72 → 240s, at ♩=92 → 188s  ≈ 3'08"~4'00"
+// ═══════════════════════════════════════════════════
+function compose(params){
+  const{mood,bpm,rootMidi,chordType,features:F,modkeyIdx}=params;
+  const beatDur=60/bpm, barDur=beatDur*4;
+
+  // Modulation for chorus
+  const [modShift, modLabel]=F.has('modkey') ? MODKEY_TYPES[modkeyIdx] : [0,'なし'];
+  const rootChorus=rootMidi+modShift;
+
+  const prog =getProgression(chordType,rootMidi);
+  const progC=getProgression(chordType,rootChorus);
+
+  const MINOR=[0,2,3,5,7,8,10];
+  const scaleFor=r=>MINOR.map(i=>r+i+12);
+
+  // ── 4-min structure ──────────────────────────────
+  // name, bars, isMelody, isChorus, dynBase
+  const sections=[
+    {name:'intro',   bars:4,  mel:false, chorus:false, dyn:0.48},
+    {name:'verseA',  bars:8,  mel:true,  chorus:false, dyn:0.70},
+    {name:'chorus1', bars:8,  mel:true,  chorus:true,  dyn:1.00},
+    {name:'verseB',  bars:8,  mel:true,  chorus:false, dyn:0.74},
+    {name:'chorus2', bars:8,  mel:true,  chorus:true,  dyn:1.00},
+    {name:'bridge',  bars:6,  mel:true,  chorus:false, dyn:0.60},
+    {name:'verseA2', bars:8,  mel:true,  chorus:false, dyn:0.78}, // A' — slightly fuller
+    {name:'chorus3', bars:8,  mel:true,  chorus:true,  dyn:1.05},
+    {name:'chorus4', bars:8,  mel:true,  chorus:true,  dyn:1.10}, // climax repeat
+    {name:'outro',   bars:6,  mel:false, chorus:false, dyn:0.38},
+  ];
+
+  const totalBars=sections.reduce((a,s)=>a+s.bars,0);
+  const totalDur=Math.min(DURATION, totalBars*barDur);
+  const nSamples=Math.floor(SR*totalDur);
+
+  const melBuf=new Float32Array(nSamples);
+  const gtrBuf=new Float32Array(nSamples);
+  const basBuf=new Float32Array(nSamples);
+  const perBuf=new Float32Array(nSamples);
+  const padBuf=new Float32Array(nSamples);
+
+  const rng=mkRng(params.seed+1);
+  // Two motifs: verse motif and chorus motif (different feel)
+  const motifV=[...Array(8)].map(()=>MINOR[Math.floor(rng()*MINOR.length)]);
+  const motifC=[...Array(8)].map(()=>MINOR[Math.floor(rng()*MINOR.length)]);
+
+  // Crescendo multiplier
+  const crescMul=(barIdx)=>{
+    if(!F.has('cresc')) return 1;
+    return 0.78+0.22*Math.sin(Math.PI*barIdx/totalBars);
+  };
+
+  // Break bar: 5th bar of chorus1
+  let breakBar=-1;
+  {let gb=0; for(const s of sections){if(s.name==='chorus1'){breakBar=gb+4;break;}gb+=s.bars;}}
+
+  let globalBar=0;
+
+  sections.forEach(sec=>{
+    const isChorus=sec.chorus;
+    const prog_=isChorus?progC:prog;
+    const scaleNotes=scaleFor(isChorus?rootChorus:rootMidi);
+    const motif=isChorus?motifC:motifV;
+
+    for(let b=0;b<sec.bars;b++){
+      const barIdx=globalBar+b;
+      const barStart=barIdx*barDur;
+      const isBreak=F.has('break')&&barIdx===breakBar;
+      const chord=prog_[barIdx%prog_.length];
+      const dynAmp=Math.min(1.15, sec.dyn * crescMul(barIdx));
+
+      // ── GUITAR ──────────────────────────────────
+      if(!isBreak){
+        writeGuitar(gtrBuf,barStart,beatDur*1.85,chord.notes,0.13*dynAmp);
+        writeGuitar(gtrBuf,barStart+beatDur*2,beatDur*1.85,chord.notes,0.11*dynAmp);
+        if(F.has('arp')){
+          chord.notes.forEach((n,ni)=>{
+            writeArp(gtrBuf,barStart+beatDur*(0.5+ni*0.5),beatDur*0.42,n,0.075*dynAmp);
+            writeArp(gtrBuf,barStart+beatDur*(2.5+ni*0.5),beatDur*0.42,n,0.065*dynAmp);
+          });
+        }
+      }
+
+      // ── BASS ────────────────────────────────────
+      const bassRoot=chord.root-24;
+      writeBass(basBuf,barStart,beatDur*0.88,bassRoot,0.36*dynAmp);
+      writeBass(basBuf,barStart+beatDur*2,beatDur*0.88,bassRoot,0.32*dynAmp);
+      if(!isBreak){
+        if(F.has('walk')){
+          writeBass(basBuf,barStart+beatDur*3.5,beatDur*0.38,bassRoot+5,0.21*dynAmp);
+          writeBass(basBuf,barStart+beatDur*1,  beatDur*0.35,bassRoot+2,0.17*dynAmp);
+        }
+        if(F.has('chroma')){
+          writeBass(basBuf,barStart+beatDur*0.75,beatDur*0.25,bassRoot+1,0.12*dynAmp);
+        }
+      }
+
+      // ── PADS ────────────────────────────────────
+      if(sec.mel||sec.name==='intro'){
+        if(F.has('strings'))
+          writeStrings(padBuf,barStart,barDur,chord.notes.map(n=>n-12),0.075*dynAmp);
+        if(F.has('piano')&&(isChorus||sec.name==='bridge'||sec.name==='verseA2')){
+          chord.notes.forEach((n,ni)=>{
+            writePiano(padBuf,barStart+ni*0.02,beatDur*1.5,n,0.065*dynAmp);
+            writePiano(padBuf,barStart+beatDur*2+ni*0.02,beatDur*1.5,n,0.055*dynAmp);
+          });
+        }
+      }
+
+      // ── PERCUSSION ──────────────────────────────
+      if(!isBreak){
+        writeKick(perBuf,barStart,0.58*dynAmp);
+        writeKick(perBuf,barStart+beatDur*2,0.48*dynAmp);
+        writeSnare(perBuf,barStart+beatDur,0.40*dynAmp);
+        writeSnare(perBuf,barStart+beatDur*3,0.40*dynAmp);
+        for(let h=0;h<8;h++){
+          const op=h===3||h===7;
+          writeHH(perBuf,barStart+h*beatDur*0.5,(h%2===0?0.17:0.10)*dynAmp,op);
+        }
+        if(F.has('fill')){
+          // pre-chorus fill: bar immediately before any chorus section
+          const nextSecIdx=sections.findIndex((_,si)=>{
+            let gb2=0; for(let x=0;x<si;x++) gb2+=sections[x].bars;
+            return gb2===barIdx+1&&sections[si]&&sections[si].chorus;
+          });
+          if(nextSecIdx>=0) writeFill(perBuf,barStart,beatDur);
+        }
+      }
+
+      // ── MELODY ──────────────────────────────────
+      if(sec.mel){
+        const noteDur=beatDur*0.5;
+        const phrasePos=b%4;
+        const auftakOff=(F.has('auftak')&&phrasePos===0)?-beatDur*0.25:0;
+
+        for(let n=0;n<8;n++){
+          if(n===5&&rng()>0.55) continue;
+          const syncDur=(F.has('synco')&&(n===2||n===6))?noteDur*1.6:noteDur*0.82;
+          let interval=motif[(barIdx*8+n)%motif.length];
+          if(F.has('octjump')&&n===4&&rng()>0.55) interval+=12;
+          if(F.has('chroma')&&(n===2||n===5)) interval+=1;
+          const deg=((interval%MINOR.length)+MINOR.length)%MINOR.length;
+          const oct=interval>=MINOR.length?12:(interval<0?-12:0);
+          const midiNote=scaleNotes[deg]+oct;
+          const nOff=barStart+auftakOff+n*noteDur;
+          if(nOff<0) continue;
+          const isClimax=sec.name==='chorus3'||sec.name==='chorus4';
+          writeMelody(melBuf,nOff,syncDur,midiNote,
+            (isClimax?0.32:0.26)*dynAmp,
+            F.has('vib'),
+            isChorus&&F.has('harm'));
+        }
+      }
+    }
+    globalBar+=sec.bars;
+  });
+
+  // ── EFFECTS ─────────────────────────────────────
+  if(F.has('reverb')){
+    applyReverb(melBuf,0.22,0.52);
+    applyReverb(gtrBuf,0.13,0.45);
+    applyReverb(padBuf,0.30,0.60);
+  }
+  if(F.has('delay')){
+    applyDelay(melBuf,60000/bpm*1.5,0.28,0.18);
+  }
+
+  // ── MIX + FADE ──────────────────────────────────
+  const outL=new Float32Array(nSamples);
+  const outR=new Float32Array(nSamples);
+  const fadeStart=F.has('fade')?Math.floor((totalDur-10)*SR):nSamples;
+
+  for(let i=0;i<nSamples;i++){
+    const fa=i>=fadeStart?Math.max(0,1-(i-fadeStart)/(10*SR)):1;
+    const L=(melBuf[i]*0.48+gtrBuf[i]*0.27+basBuf[i]*0.66+perBuf[i]*0.46+padBuf[i]*0.21)*fa;
+    const R=(melBuf[i]*0.48+gtrBuf[i]*0.42+basBuf[i]*0.66+perBuf[i]*0.34+padBuf[i]*0.21)*fa;
+    outL[i]=Math.tanh(L*0.65)/0.65;
+    outR[i]=Math.tanh(R*0.65)/0.65;
+  }
+
+  return{left:outL,right:outR,duration:totalDur,modLabel,params};
+}
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let renderedLeft=null,renderedRight=null,renderedDur=0,currentId='';
+let pbCtx=null,pbSrc=null,isPlaying=false,pauseOffset=0,_startedAt=0,animId=null;
+
+// ═══════════════════════════════════════════════════
+//  GENERATE / LOAD
+// ═══════════════════════════════════════════════════
+function generate(){const id=makeId();document.getElementById('idInput').value=id;buildAndRender(id);}
+function loadById(){
+  const v=document.getElementById('idInput').value.trim();
+  if(!/^\d{12}$/.test(v)){showStatus('12桁の数字を入力してください');return;}
+  if(idToSeed(v)===null){showStatus('IDが無効です（チェックサムエラー）');return;}
+  buildAndRender(v);
+}
+
+async function buildAndRender(id12){
+  stopSong();
+  renderedLeft=null;renderedRight=null;
+  ['btnPlay','btnSave','btnCopyId','btnGen'].forEach(id=>document.getElementById(id).disabled=true);
+  showStatus('作曲中... しばらくお待ちください（約4分の楽曲です）');
+  drawIdleCanvas(); setTracks(false);
+  await new Promise(r=>setTimeout(r,30));
+
+  try{
+    const seed=idToSeed(id12);
+    const params=deriveParams(seed);
+    const rng2=mkRng(seed+99);
+    const title=makeTitle(params.mood,params.titleIdx,rng2);
+    const result=compose(params);
+    renderedLeft=result.left; renderedRight=result.right; renderedDur=result.duration;
+    currentId=id12;
+    const F=params.features;
+
+    document.getElementById('songTitle').textContent=title;
+    document.getElementById('songIdBadge').textContent='ID: '+id12;
+    document.getElementById('songCard').classList.add('active');
+    document.getElementById('infoMood').textContent=MOOD_NAMES[params.mood];
+    document.getElementById('infoTempo').textContent='♩＝'+params.bpm;
+    document.getElementById('infoKey').textContent=NOTE_NAMES[params.rootMidi%12]+'m';
+    document.getElementById('infoChord').textContent=CHORD_NAMES[params.chordType];
+    document.getElementById('infoModkey').textContent=F.has('modkey')?result.modLabel:'なし';
+    const dur=Math.floor(renderedDur);
+    const durStr=Math.floor(dur/60)+':'+String(dur%60).padStart(2,'0');
+    document.getElementById('infoDur').textContent=durStr;
+    document.getElementById('timeTot').textContent=durStr;
+
+    const et=document.getElementById('emoTags');
+    et.innerHTML='';
+    FEATURES.forEach(f=>{
+      const d=document.createElement('div');
+      d.className='emo-tag '+(F.has(f.id)?'on':'off');
+      d.textContent=f.label; et.appendChild(d);
+    });
+    document.getElementById('featCount').innerHTML=`使用中のエモい機能: <span>${F.size} / 20</span>`;
+
+    drawWaveform(renderedLeft); setTracks(true);
+    ['btnPlay','btnSave','btnCopyId'].forEach(id=>document.getElementById(id).disabled=false);
+    showStatus('✦ 生成完了 — ID: '+id12,'ok');
+  }catch(e){showStatus('エラー: '+e.message);console.error(e);}
+  document.getElementById('btnGen').disabled=false;
+}
+
+// ═══════════════════════════════════════════════════
+//  PLAYBACK
+// ═══════════════════════════════════════════════════
+function togglePlay(){if(!renderedLeft)return;isPlaying?pauseSong():playSong();}
+
+function playSong(){
+  if(pbCtx){try{pbCtx.close();}catch(e){}}
+  pbCtx=new AudioContext({sampleRate:SR});
+  const ab=pbCtx.createBuffer(2,renderedLeft.length,SR);
+  ab.getChannelData(0).set(renderedLeft); ab.getChannelData(1).set(renderedRight);
+  pbSrc=pbCtx.createBufferSource(); pbSrc.buffer=ab;
+  const gain=pbCtx.createGain(); gain.gain.value=0.82;
+  pbSrc.connect(gain); gain.connect(pbCtx.destination);
+  pbSrc.start(0,pauseOffset); _startedAt=pbCtx.currentTime-pauseOffset;
+  pbSrc.onended=()=>{
+    if(isPlaying){isPlaying=false;pauseOffset=0;_startedAt=0;setPlayIcon(false);
+      cancelAnimationFrame(animId);
+      document.getElementById('progBar').style.width='0%';
+      document.getElementById('timeNow').textContent='0:00';}
+  };
+  isPlaying=true; setPlayIcon(true); animProgress();
+}
+function pauseSong(){
+  if(!pbCtx||!pbSrc)return;
+  pauseOffset=pbCtx.currentTime-_startedAt;
+  pbSrc.stop(); try{pbCtx.close();}catch(e){} pbCtx=null; pbSrc=null;
+  isPlaying=false; setPlayIcon(false); cancelAnimationFrame(animId);
+}
+function stopSong(){
+  if(pbSrc){try{pbSrc.stop();}catch(e){}}
+  if(pbCtx){try{pbCtx.close();}catch(e){}}
+  pbSrc=null;pbCtx=null;isPlaying=false;pauseOffset=0;_startedAt=0;
+  setPlayIcon(false); cancelAnimationFrame(animId);
+  document.getElementById('progBar').style.width='0%';
+  document.getElementById('timeNow').textContent='0:00';
+}
+function setPlayIcon(pl){
+  document.getElementById('playIco').innerHTML=pl
+    ?'<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'
+    :'<polygon points="5,3 19,12 5,21"/>';
+}
+function animProgress(){
+  animId=requestAnimationFrame(()=>{
+    if(!isPlaying||!pbCtx)return;
+    const el=pbCtx.currentTime-_startedAt;
+    document.getElementById('progBar').style.width=Math.min(100,(el/renderedDur)*100)+'%';
+    const s=Math.floor(el);
+    document.getElementById('timeNow').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+    if(el<renderedDur)animProgress();
+  });
+}
+document.getElementById('progWrap').addEventListener('click',e=>{
+  if(!renderedLeft)return;
+  const r=e.currentTarget.getBoundingClientRect();
+  pauseOffset=(e.clientX-r.left)/r.width*renderedDur;
+  if(isPlaying){pbSrc.stop();try{pbCtx.close();}catch(ex){}pbCtx=null;pbSrc=null;isPlaying=false;playSong();}
+  else{
+    const s=Math.floor(pauseOffset);
+    document.getElementById('progBar').style.width=((pauseOffset/renderedDur)*100)+'%';
+    document.getElementById('timeNow').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+  }
+});
+
+// ═══════════════════════════════════════════════════
+//  SAVE WAV
+// ═══════════════════════════════════════════════════
+function saveSong(){
+  if(!renderedLeft)return; showStatus('WAVを生成中...');
+  setTimeout(()=>{
+    const wav=encodeWav(renderedLeft,renderedRight,SR);
+    const blob=new Blob([wav],{type:'audio/wav'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=document.getElementById('songTitle').textContent+'_'+currentId+'.wav';
+    a.click(); URL.revokeObjectURL(url);
+    showStatus('✦ 保存しました — '+a.download,'ok');
+  },50);
+}
+function encodeWav(L,R,sr){
+  const nc=2,len=L.length, buf=new ArrayBuffer(44+len*nc*2), v=new DataView(buf);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');v.setUint32(4,36+len*nc*2,true);ws(8,'WAVE');
+  ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);
+  v.setUint16(22,nc,true);v.setUint32(24,sr,true);v.setUint32(28,sr*nc*2,true);
+  v.setUint16(32,nc*2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,len*nc*2,true);
+  let off=44;
+  for(let i=0;i<len;i++){
+    v.setInt16(off,Math.max(-32768,Math.min(32767,Math.round(L[i]*32767))),true);off+=2;
+    v.setInt16(off,Math.max(-32768,Math.min(32767,Math.round(R[i]*32767))),true);off+=2;
+  }
+  return buf;
+}
+
+// ═══════════════════════════════════════════════════
+//  COPY ID
+// ═══════════════════════════════════════════════════
+function copyId(){
+  if(!currentId)return;
+  navigator.clipboard.writeText(currentId)
+    .then(()=>showStatus('✦ IDをコピーしました: '+currentId,'ok'))
+    .catch(()=>document.getElementById('idInput').select());
+}
+
+// ═══════════════════════════════════════════════════
+//  CANVAS
+// ═══════════════════════════════════════════════════
+const canvas=document.getElementById('vis'), c2=canvas.getContext('2d');
+function drawIdleCanvas(){
+  const w=canvas.width,h=canvas.height;
+  c2.fillStyle='#0a0a0c';c2.fillRect(0,0,w,h);
+  c2.strokeStyle='rgba(255,255,255,0.05)';c2.lineWidth=1;
+  for(let x=0;x<w;x+=48){c2.beginPath();c2.moveTo(x,0);c2.lineTo(x,h);c2.stroke();}
+  c2.beginPath();c2.moveTo(0,h/2);c2.lineTo(w,h/2);c2.stroke();
+  c2.fillStyle='rgba(255,255,255,0.15)';c2.font='11px DM Mono';c2.textAlign='center';
+  c2.fillText('waveform will appear here',w/2,h/2+4);
+}
+drawIdleCanvas();
+function drawWaveform(data){
+  const w=canvas.width,h=canvas.height,step=Math.floor(data.length/w);
+  c2.fillStyle='#0a0a0c';c2.fillRect(0,0,w,h);
+  c2.strokeStyle='rgba(255,255,255,0.04)';c2.lineWidth=1;
+  for(let x=0;x<w;x+=48){c2.beginPath();c2.moveTo(x,0);c2.lineTo(x,h);c2.stroke();}
+  c2.beginPath();c2.moveTo(0,h/2);c2.lineTo(w,h/2);c2.stroke();
+  const g=c2.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,'rgba(232,98,74,0.85)');
+  g.addColorStop(0.5,'rgba(212,168,67,0.95)');
+  g.addColorStop(1,'rgba(232,98,74,0.85)');
+  c2.fillStyle=g;
+  for(let x=0;x<w;x++){
+    let mn=1,mx=-1;
+    for(let s=0;s<step;s++){const v=data[x*step+s]||0;if(v<mn)mn=v;if(v>mx)mx=v;}
+    c2.fillRect(x,(1-mx)/2*h,1,Math.max(1,(1-mn)/2*h-(1-mx)/2*h));
+  }
+}
+function setTracks(on){
+  ['tr-mel','tr-gtr','tr-bas','tr-per'].forEach(id=>document.getElementById(id).classList.toggle('lit',on));
+}
+function showStatus(msg,cls=''){
+  const el=document.getElementById('status');
+  el.textContent=msg; el.className='status'+(cls?' '+cls:'');
+}
+</script>
+</body>
+</html>
