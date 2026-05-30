@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>歌謡曲風インスト自動生成</title>
+<style>
+:root{--bg:#0d1017;--panel:#151a24;--fg:#e8edf7;--muted:#9aa7bd;--acc:#6ee7ff;--line:#263044}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#090b10,#111827);color:var(--fg);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:auto;padding:18px}.title{font-size:22px;font-weight:800;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:360px 1fr;gap:14px}@media(max-width:850px){.grid{grid-template-columns:1fr}}
+.card{background:rgba(21,26,36,.94);border:1px solid #263044;border-radius:16px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+.info{display:grid;grid-template-columns:130px 1fr;gap:8px 10px;font-size:14px}.k{color:var(--muted)}.v{font-weight:700;word-break:break-word}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
+button{border:0;border-radius:12px;padding:12px 10px;background:#222b3b;color:#fff;font-weight:800;cursor:pointer}
+button:hover{filter:brightness(1.15)}button.primary{background:#1179a0}button.stop{background:#803035}button.good{background:#2d6a45}button.warn{background:#725a16}
+canvas{width:100%;height:230px;background:#090c12;border-radius:12px;border:1px solid #283246;display:block}
+#bars{display:flex;height:48px;border-radius:12px;overflow:hidden;border:1px solid #283246;margin:12px 0;background:#101620}
+.sec{height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:white;text-shadow:0 1px 3px #000;opacity:.58;transition:.12s}
+.sec.now{opacity:1;outline:3px solid #fff;z-index:2}
+.log{font-size:12px;color:var(--muted);min-height:1.4em;margin-top:10px}.small{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.45}
+</style>
+</head>
+<body>
+<main>
+  <h1 class="title">日本語歌謡曲風インストルメンタル自動生成</h1>
+  <div class="grid">
+    <section class="card">
+      <div class="info">
+        <div class="k">曲ID</div><div class="v" id="songId">-</div>
+        <div class="k">BPM</div><div class="v" id="bpm">-</div>
+        <div class="k">キー</div><div class="v" id="key">-</div>
+        <div class="k">使用楽器</div><div class="v" id="inst">-</div>
+        <div class="k">フィーチャー楽器</div><div class="v" id="feature">-</div>
+        <div class="k">構成タイプ</div><div class="v" id="form">-</div>
+        <div class="k">アウトロタイプ</div><div class="v" id="outro">-</div>
+        <div class="k">五七調／七五調</div><div class="v" id="meter">-</div>
+        <div class="k">エモ機能一覧</div><div class="v" id="emo">-</div>
+      </div>
+      <div class="buttons">
+        <button class="primary" id="compose">作曲する</button>
+        <button class="good" id="play">▶ 再生</button>
+        <button class="stop" id="stop">■ 停止</button>
+        <button class="warn" id="auto">▶▶ 連続生成</button>
+        <button id="copy">IDコピー</button>
+        <button id="wav">WAV保存</button>
+      </div>
+      <div class="log" id="log"></div>
+      <div class="small">IDをクリックして12桁IDを入力すると同じ曲を再現できます。</div>
+    </section>
+    <section class="card">
+      <canvas id="wave" width="1300" height="260"></canvas>
+      <div id="bars"></div>
+      <div class="small" id="time">00:00 / 00:00</div>
+    </section>
+  </div>
+</main>
+<script>
+(()=>{"use strict";
+const $=id=>document.getElementById(id),SR=44100,TPB=24,BEATS=4,BPMS=[68,72,76,80,84,88,92,96];
+const NOTE={C:0,Cs:1,D:2,Ds:3,E:4,F:5,Fs:6,G:7,Gs:8,A:9,As:10,B:11};
+const KEYS=[["Am",57],["Dm",62],["Em",64],["Gm",67],["Cm",60],["F#m",66],["A",57],["D",62],["G",67],["C",60]];
+const leadNames=["コーラスシンセ","エレピ","ハーモニカ","ストリングスリード"],gitNames=["アコギ","エレキクリーン","ナイロン弦"],bassNames=["エレキ","アップライト","シンセ"],padNames=["ストリングス","オルガン","グラスシンセ"];
+const featureNames=["ギター★","ベース★","ドラム★","パッド★"];
+const globalEmo=["マイナーキー","リバーブ","ビブラート","ダイナミクス変化","ストリングスパッド","ピアノパッド","ウォーキングベース","ギターアルペジオ","フェードアウト","ディレイ","3度ハーモニー","クレッシェンド"];
+const spotEmo=["サビ転調","ブレイク（1回）","ドラムフィル","オクターブ跳躍（3回）","弱起","シンコペーション","クロマチック経過音","半音下降ライン"];
+const forms=[
+ ["王道型",["イントロ","1A","1B","サビ","2A","2B","サビ","ブリッジ","大サビ","アウトロ"]],
+ ["サビ頭型",["サビ","イントロ","1A","1B","サビ","2A","大サビ","アウトロ"]],
+ ["A-A-B型",["イントロ","1A","サビ","2A","サビ","大サビ","アウトロ"]],
+ ["2ブロック型",["イントロ","A","B","サビ","ブリッジ","大サビ","アウトロ"]],
+ ["転調サビ頭型",["大サビ","イントロ","1A","1B","サビ","2A","大サビ","アウトロ"]]
+];
+const outroTypes=["フェードアウト","コーダ","余韻","リタルダンド","転回終止"];
+const secColors={"イントロ":"#4568dc","1A":"#24a19c","2A":"#24a19c","A":"#24a19c","1B":"#bf7b28","2B":"#bf7b28","B":"#bf7b28","サビ":"#d94f70","ブリッジ":"#6d5bd0","大サビ":"#ff8c42","アウトロ":"#53606e"};
+let audioCtx=null,master=null,current=null,playing=false,startAt=0,raf=0,auto=false,timers=[];
+function ctx(){if(!audioCtx){audioCtx=new (window.AudioContext||window.webkitAudioContext)();master=audioCtx.createGain();master.gain.value=.78;master.connect(audioCtx.destination)}return audioCtx}
+function checksum10(s){let a=0;for(let i=0;i<s.length;i++)a=(a+(i+1)*Number(s[i]))%100;return String(a).padStart(2,"0")}
+function makeId(d=new Date()){let yy=String(d.getFullYear()%100).padStart(2,"0"),mo=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0"),h=String(d.getHours()).padStart(2,"0"),m=String(d.getMinutes()).padStart(2,"0");let base=yy+mo+da+h+m;return base+checksum10(base)}
+function validId(id){return /^\d{12}$/.test(id)&&checksum10(id.slice(0,10))===id.slice(10)}
+function xmur3(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=h<<13|h>>>19}return()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return (h^h>>>16)>>>0}}
+function mulberry32(a){return()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function midiHz(m){return 440*Math.pow(2,(m-69)/12)}
+function pick(r,a){return a[Math.floor(r()*a.length)]}
+function choose(r,a,n){let b=[...a],o=[];while(o.length<n&&b.length)o.push(b.splice(Math.floor(r()*b.length),1)[0]);return o}
+function clamp(n,a,b){return Math.max(a,Math.min(b,n))}
+function secKind(s){if(s.includes("A"))return"A";if(s.includes("B"))return"B";if(s==="大サビ")return"大サビ";return s}
+const progLib=[
+ [[0,5,6,3],[5,6,0,0],[3,4,0,0],[5,6,4,4]],
+ [[0,3,4,0],[5,3,4,0],[0,6,5,4],[3,4,0,0]],
+ [[0,4,5,3],[0,4,3,4],[5,6,0,0],[3,4,0,0]],
+ [[0,5,3,4],[0,6,3,4],[5,4,3,4],[0,0,5,0]]
+];
+const phrase5=[[0,1,2,1,0],[2,3,4,3,2],[4,3,2,1,0],[0,2,3,2,1]];
+const phrase7=[[0,1,2,3,2,1,0],[2,2,3,4,3,2,1],[4,3,2,3,2,1,0],[0,2,4,3,2,1,0]];
+const rhythm5=[0,6,12,18,21], rhythm7=[0,4,8,12,15,18,21];
+function buildSong(id){
+ let seed=xmur3(id)(),r=mulberry32(seed),bpm=pick(r,BPMS),beatDur=60/bpm,barDur=beatDur*4,tickDur=beatDur/TPB;
+ let bars=Math.round(210/barDur), form=pick(r,forms), outro=pick(r,outroTypes), key=pick(r,KEYS);
+ let lead=pick(r,leadNames),git=pick(r,gitNames),bass=pick(r,bassNames),pad=pick(r,padNames),feature=pick(r,featureNames);
+ let meter=r()<.5?"五七調":"七五調", emo=choose(r,globalEmo.concat(spotEmo),10+Math.floor(r()*11));
+ let raw=form[1], weights=raw.map(s=>s==="イントロ"||s==="アウトロ"?1:s==="ブリッジ"?1.15:s==="大サビ"?1.35:1.25), sum=weights.reduce((a,b)=>a+b,0);
+ let secs=[],used=0;raw.forEach((s,i)=>{let len=i===raw.length-1?bars-used:Math.max(4,Math.round(bars*weights[i]/sum/4)*4);if(i===raw.length-1&&len<4){len=4;secs[secs.length-1].bars-=4-len}secs.push({name:s,start:used,bars:len});used+=len});
+ let totalBars=secs.reduce((a,s)=>a+s.bars,0), totalTicks=totalBars*BEATS*TPB;
+ let scale=key[0].includes("m")?[0,2,3,5,7,8,10]:[0,2,4,5,7,9,11], root=key[1], prog=pick(r,progLib);
+ let motif=[0,2,4,3,2].slice(0,4+Math.floor(r()*2));
+ let dyn={lead:.9,git:.55,bass:.7,pad:.38,dr:.62};Object.keys(dyn).forEach(k=>dyn[k]*=.82+r()*.36);
+ if(feature==="ギター★")dyn.git*=1.4;if(feature==="ベース★")dyn.bass*=1.4;if(feature==="ドラム★")dyn.dr*=1.4;if(feature==="パッド★")dyn.pad*=1.4;
+ let events=[];function add(part,midi,absTick,durTick,vel,extra={}){events.push({part,midi,absTick,durTick,vel,...extra})}
+ function degMidi(deg,oct=0,chrom=0){let m=root+scale[((deg%7)+7)%7]+12*(Math.floor(deg/7)+oct)+chrom;while(m<57)m+=12;while(m>72)m-=12;return m}
+ function chordRoot(sec,bar){let trans=(emo.includes("サビ転調")&&(sec==="大サビ"||sec==="サビ"))?1:0;let d=prog[bar%prog.length][bar%4];return root+scale[d%7]+trans}
+ function isChorus(k){return k==="サビ"||k==="大サビ"}
+ secs.forEach(sec=>{
+   let kind=secKind(sec.name);
+   for(let b=0;b<sec.bars;b++){
+     let absBar=sec.start+b, base=absBar*96, ch=chordRoot(sec.name,b), amp=(.85+Math.sin(absBar/totalBars*Math.PI)*.25);
+     if(emo.includes("クレッシェンド"))amp*=.75+.45*absBar/totalBars;
+     if(sec.name==="アウトロ"&&outro==="フェードアウト")amp*=Math.max(.7,1-b/sec.bars*.3);
+     for(let q=0;q<4;q++) add("pad",ch+48%12,base+q*24,20,dyn.pad*amp*.55,{wave:"triangle"});
+     let bassPat=kind==="B"?[0,7,12,7]:kind==="ブリッジ"?[0,-1,-2,-3]:[0,0,7,12];
+     bassPat.forEach((iv,q)=>add("bass",clamp(ch+36+iv,36,58),base+q*24,20,dyn.bass*amp,{wave:bass==="シンセ"?"sawtooth":"triangle"}));
+     let strum=kind==="イントロ"?[0,12,24,36,54,72][Math.floor(r()*6)]%24:kind==="A"?12:kind==="B"?0:kind==="ブリッジ"?[0,12,24,36][b%4]:0;
+     let gTicks=(isChorus(kind)||feature==="ギター★")?[0,12,24,36,48,60,72,84]:[strum,24,48,72];
+     gTicks.forEach(t=>[0,4,7].forEach((iv,i)=>add("git",clamp(ch+48+iv,52,76),base+t+i,dyn.git*amp*(isChorus(kind)?.55:.36),dyn.git,{wave:"triangle"})));
+     if(sec.name!=="アウトロ" && !(emo.includes("ブレイク（1回）")&&absBar===Math.floor(totalBars*.62))){
+       [0,48].forEach(t=>add("kick",36,base+t,5,dyn.dr*amp));
+       if(kind==="サビ"||kind==="大サビ"){[18,42,66,90].forEach(t=>add("kick",36,base+t,4,dyn.dr*.55*amp))}
+       [24,72].forEach(t=>add("snare",38,base+t,5,dyn.dr*amp));
+       for(let t=0;t<96;t+=(kind==="A"?24:12))add(kind==="サビ"||kind==="大サビ"?"ohh":"hh",42,base+t,3,dyn.dr*.42*amp);
+       if((emo.includes("ドラムフィル")||feature==="ドラム★")&&b===sec.bars-1)[72,78,84,90].forEach(t=>add("snare",38,base+t,3,dyn.dr*.7*amp));
+     }
+     let phraseLen=(meter==="五七調"?(b%2?7:5):(b%2?5:7)), pat=phraseLen===5?pick(r,phrase5):pick(r,phrase7), rt=phraseLen===5?rhythm5:rhythm7;
+     if([0,1].includes(b)&&["イントロ","A","B","サビ","大サビ","1A","1B"].some(x=>sec.name.includes(x)||sec.name===x))pat=motif.concat(pat).slice(0,phraseLen);
+     let lastDeg=null,dir=0;
+     pat.forEach((dg,i)=>{
+       let nd=dg+(isChorus(kind)?2:0)+(sec.name==="大サビ"?3:0), chrom=0;
+       if(emo.includes("クロマチック経過音")&&i===Math.floor(pat.length/2)&&r()<.5)chrom=r()<.5?1:-1;
+       if(lastDeg!==null&&Math.abs(nd-lastDeg)>2){nd=lastDeg+(dir>0?-1:1)}
+       if(r()<.5&&i>0&&i<pat.length-1)nd=(nd+lastDeg)/2;
+       let m=degMidi(Math.round(nd),0,chrom), dur=(i===pat.length-1?18:Math.max(3,(rt[i+1]??24)-rt[i]-1));
+       add("lead",m,base+rt[i]+(emo.includes("弱起")&&b===0&&i===0?-6:0),dur,dyn.lead*amp*(isChorus(kind)?1.08:.86),{lead});
+       if(emo.includes("3度ハーモニー")&&isChorus(kind))add("lead2",degMidi(Math.round(nd)+2),base+rt[i],dur,dyn.lead*.36*amp,{lead});
+       if(emo.includes("オクターブ跳躍（3回）")&&i===2&&b%8===2)add("lead",clamp(m+12,57,72),base+rt[i]+3,6,dyn.lead*.55*amp,{lead});
+       dir=lastDeg===null?0:nd-lastDeg;lastDeg=nd;
+     });
+     if((feature==="パッド★"&&isChorus(kind))||emo.includes("半音下降ライン"))[0,24,48,72].forEach((t,i)=>add("pad",clamp(ch+72-i,60,82),base+t,20,dyn.pad*.5*amp,{wave:"sine"}));
+   }
+ });
+ return {id,bpm,beatDur,barDur,tickDur,totalBars,totalTicks,duration:totalTicks*tickDur,key:key[0],lead,git,bass,pad,feature,form:form[0],outro,meter,emo,secs,events,dyn};
+}
+function env(g,t,d,v){g.gain.cancelScheduledValues(t);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.015);g.gain.exponentialRampToValueAtTime(Math.max(.0001,v*.35),t+Math.max(.04,d*.72));g.gain.exponentialRampToValueAtTime(.0001,t+d)}
+function schedNote(ac,dest,e,when){
+ let g=ac.createGain(),o=ac.createOscillator(),d=e.durTick*current.tickDur;g.connect(dest);o.connect(g);o.type=e.wave||"sine";o.frequency.value=midiHz(e.midi||60);
+ let v=e.vel*.23;if(e.part==="lead"||e.part==="lead2"){o.type=e.lead==="エレピ"?"triangle":e.lead==="ハーモニカ"?"square":"sine";v*=.9; if(d>.35){let lfo=ac.createOscillator(),lg=ac.createGain();lfo.frequency.value=5.2;lg.gain.value=4.5;lfo.connect(lg);lg.connect(o.frequency);lfo.start(when+.12);lfo.stop(when+d)}}
+ if(e.part==="git"){o.type="triangle";v*=.42} if(e.part==="bass"){o.type=e.wave||"triangle";v*=.55} if(e.part==="pad"){v*=.35}
+ env(g,when,d,v);o.start(when);o.stop(when+d+.04)
+}
+function schedDrum(ac,dest,e,when){
+ let g=ac.createGain();g.connect(dest);let d=.08,v=e.vel*.35;g.gain.setValueAtTime(v,when);g.gain.exponentialRampToValueAtTime(.0001,when+d);
+ if(e.part==="kick"){let o=ac.createOscillator();o.type="sine";o.frequency.setValueAtTime(100,when);o.frequency.exponentialRampToValueAtTime(42,when+d);o.connect(g);o.start(when);o.stop(when+d)}
+ else{let len=e.part==="ohh"?.18:.07,buf=ac.createBuffer(1,Math.floor(ac.sampleRate*len),ac.sampleRate),a=buf.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/a.length,2);let n=ac.createBufferSource();n.buffer=buf;let hp=ac.createBiquadFilter();hp.type="highpass";hp.frequency.value=e.part==="snare"?900:5000;n.connect(hp);hp.connect(g);n.start(when);n.stop(when+len)}
+}
+function schedule(song,offset=0,dest=master,ac=ctx()){
+ current=song;let start=ac.currentTime+offset;startAt=start;playing=true;
+ let limiter=ac.createDynamicsCompressor();limiter.threshold.value=-12;limiter.ratio.value=8;limiter.connect(dest);
+ song.events.forEach(e=>{let t=start+e.absTick*song.tickDur;if(t<ac.currentTime-.05)return;(e.part==="kick"||e.part==="snare"||e.part==="hh"||e.part==="ohh")?schedDrum(ac,limiter,e,t):schedNote(ac,limiter,e,t)});
+ timers.push(setTimeout(()=>{playing=false;if(auto){compose();play()}},(song.duration+offset+.25)*1000));
+ drawLoop();
+}
+async function play(){let ac=ctx();await ac.resume();stop(false);schedule(current||compose(),.08)}
+function stop(update=true){timers.forEach(clearTimeout);timers=[];playing=false;if(master){try{master.disconnect()}catch(e){} master=ctx().createGain();master.gain.value=.78;master.connect(audioCtx.destination)}if(update)draw()}
+function compose(id){
+ if(!id)id=makeId(new Date(Date.now()+Math.floor(Math.random()*60000)));
+ current=buildSong(id);renderInfo();drawBars();draw();return current;
+}
+function renderInfo(){let s=current;$("songId").textContent=s.id;$("bpm").textContent=s.bpm;$("key").textContent=s.key;$("inst").textContent=`主旋律:${s.lead} / ギター:${s.git} / ベース:${s.bass} / パッド:${s.pad}`;$("feature").textContent=s.feature;$("form").textContent=s.form;$("outro").textContent=s.outro;$("meter").textContent=s.meter;$("emo").textContent=s.emo.join("，");$("time").textContent=`00:00 / ${fmt(s.duration)}`}
+function drawBars(pos=-1){let b=$("bars");b.innerHTML="";if(!current)return;current.secs.forEach((s,i)=>{let d=document.createElement("div");d.className="sec"+(i===pos?" now":"");d.style.background=secColors[s.name]||secColors[secKind(s.name)]||"#777";d.style.flex=s.bars;d.textContent=s.name;b.appendChild(d)})}
+function fmt(t){let m=Math.floor(t/60),s=Math.floor(t%60);return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")}
+function drawLoop(){cancelAnimationFrame(raf);let loop=()=>{draw();if(playing)raf=requestAnimationFrame(loop)};loop()}
+function draw(){
+ let c=$("wave"),x=c.getContext("2d"),w=c.width,h=c.height;x.clearRect(0,0,w,h);x.fillStyle="#090c12";x.fillRect(0,0,w,h);if(!current)return;
+ let now=playing?Math.max(0,ctx().currentTime-startAt):0,span=18,off=Math.max(0,now-4);
+ x.strokeStyle="#334155";x.lineWidth=1;for(let i=0;i<18;i++){let xx=i*w/18;x.beginPath();x.moveTo(xx,0);x.lineTo(xx,h);x.stroke()}
+ x.strokeStyle="#6ee7ff";x.lineWidth=2;x.beginPath();for(let px=0;px<w;px++){let t=off+px/w*span,bar=Math.floor(t/current.barDur),y=h/2;let ev=current.events.find(e=>Math.abs(e.absTick*current.tickDur-t)<.08&&e.part.startsWith("lead"));if(ev)y=h/2-(ev.midi-64)*8;else y=h/2+Math.sin(t*8)*4;if(px===0)x.moveTo(px,y);else x.lineTo(px,y)}x.stroke();
+ let playX=(now-off)/span*w;x.strokeStyle="#fff";x.lineWidth=3;x.beginPath();x.moveTo(playX,0);x.lineTo(playX,h);x.stroke();
+ let secIdx=current.secs.findIndex(s=>now>=s.start*current.barDur&&now<(s.start+s.bars)*current.barDur);drawBars(secIdx);$("time").textContent=`${fmt(now)} / ${fmt(current.duration)}`;
+}
+async function wav(){
+ if(!current)compose();$("log").textContent="WAV生成中";
+ let ac=new OfflineAudioContext(2,Math.ceil((current.duration+1)*SR),SR),dest=ac.destination,old=current;
+ current=old;
+ let start=.1,lim=ac.createDynamicsCompressor();lim.threshold.value=-12;lim.ratio.value=8;lim.connect(dest);
+ old.events.forEach(e=>{let t=start+e.absTick*old.tickDur;(e.part==="kick"||e.part==="snare"||e.part==="hh"||e.part==="ohh")?schedDrum(ac,lim,e,t):schedNote(ac,lim,e,t)});
+ let buf=await ac.startRendering(),blob=pcm16(buf),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`kayokyoku-${old.id}.wav`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);$("log").textContent="WAV保存完了";
+}
+function pcm16(buffer){let n=buffer.length,ch=buffer.numberOfChannels,bytes=44+n*ch*2,ab=new ArrayBuffer(bytes),v=new DataView(ab),p=0;function s(x){for(let i=0;i<x.length;i++)v.setUint8(p++,x.charCodeAt(i))}function u32(x){v.setUint32(p,x,true);p+=4}function u16(x){v.setUint16(p,x,true);p+=2}
+ s("RIFF");u32(bytes-8);s("WAVEfmt ");u32(16);u16(1);u16(ch);u32(SR);u32(SR*ch*2);u16(ch*2);u16(16);s("data");u32(n*ch*2);
+ let data=[];for(let c=0;c<ch;c++)data.push(buffer.getChannelData(c));for(let i=0;i<n;i++)for(let c=0;c<ch;c++){let val=Math.max(-1,Math.min(1,data[c][i]));v.setInt16(p,val<0?val*32768:val*32767,true);p+=2}return new Blob([ab],{type:"audio/wav"})}
+$("compose").onclick=()=>{stop(false);compose()};
+$("play").onclick=play;$("stop").onclick=()=>{auto=false;$("auto").textContent="▶▶ 連続生成";stop()};
+$("auto").onclick=()=>{auto=!auto;$("auto").textContent=auto?"■ 連続停止":"▶▶ 連続生成";if(auto){compose();play()}};
+$("copy").onclick=async()=>{if(current)await navigator.clipboard.writeText(current.id);$("log").textContent="IDをコピーしました"};
+$("wav").onclick=wav;
+$("songId").onclick=()=>{let id=prompt("12桁の曲ID",current?current.id:"");if(id&&validId(id)){stop(false);compose(id)}else if(id){alert("IDまたはチェックサムが不正です")}};
+compose();
+})();
+</script>
+</main>
+</body>
+</html>
