@@ -1,0 +1,1915 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歌謡曲ジェネレーター</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@300;700&display=swap');
+
+:root {
+  --bg: #0a0a0f;
+  --bg2: #10101a;
+  --bg3: #181828;
+  --panel: #1a1a2e;
+  --border: #2a2a4a;
+  --accent: #ff6b9d;
+  --accent2: #c084fc;
+  --accent3: #38bdf8;
+  --gold: #fbbf24;
+  --purple: #a855f7;
+  --green: #34d399;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --dim: #94a3b8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scanline overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.header {
+  padding: 24px 32px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #0a0a0f 0%, #1a0a2e 100%);
+}
+
+.logo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.logo-main {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.1em;
+}
+
+.logo-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.main {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 0;
+  height: calc(100vh - 73px);
+}
+
+.left-panel {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.right-panel {
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--bg2);
+}
+
+/* Buttons */
+.btn-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0);
+  transition: background 0.2s;
+}
+.btn:hover::after { background: rgba(255,255,255,0.08); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #d946ef);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(255,107,157,0.3);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, var(--accent3), #6366f1);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(56,189,248,0.3);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--dim);
+}
+.btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Now playing */
+.now-playing {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.now-playing::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+}
+
+.np-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.np-title {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.song-id {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 18px;
+  color: var(--gold);
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 12px rgba(251,191,36,0.4);
+}
+
+.song-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.meta-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.meta-label {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  margin-bottom: 3px;
+}
+
+.meta-value {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* Progress bar */
+.progress-wrap {
+  margin-top: 16px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 2px;
+  transition: width 0.5s linear;
+  width: 0%;
+}
+
+/* Section bar */
+.section-bar-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.section-bar-title {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+}
+
+.section-bar {
+  display: flex;
+  gap: 2px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.section-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-family: 'Share Tech Mono', monospace;
+  cursor: default;
+  transition: opacity 0.3s, filter 0.3s;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.section-seg.active {
+  filter: brightness(1.3);
+  outline: 2px solid rgba(255,255,255,0.4);
+  outline-offset: -2px;
+}
+
+/* Canvas */
+.canvas-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 80px;
+}
+
+/* Emotion tags */
+.emotion-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.emotion-title {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: 'Share Tech Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.tag-global {
+  background: rgba(251,191,36,0.12);
+  border: 1px solid rgba(251,191,36,0.3);
+  color: var(--gold);
+}
+
+.tag-spot {
+  background: rgba(168,85,247,0.12);
+  border: 1px solid rgba(168,85,247,0.3);
+  color: var(--purple);
+}
+
+/* Right panel */
+.panel-section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.panel-title {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.instrument-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 12px;
+}
+
+.instrument-row:last-child { border-bottom: none; }
+
+.inst-name { color: var(--dim); }
+
+.inst-type {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--accent3);
+}
+
+.inst-featured {
+  font-size: 10px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.log-wrap {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 120px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.log-line { margin-bottom: 2px; }
+.log-line.info { color: var(--accent3); }
+.log-line.ok { color: var(--green); }
+.log-line.warn { color: var(--gold); }
+
+.id-display {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 20px;
+  color: var(--gold);
+  letter-spacing: 0.2em;
+  text-align: center;
+  padding: 12px;
+  background: rgba(251,191,36,0.05);
+  border: 1px solid rgba(251,191,36,0.2);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.continuous-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 20px;
+  font-size: 11px;
+  color: #ef4444;
+  animation: blink 1s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+.scrollbar::-webkit-scrollbar { width: 4px; }
+.scrollbar::-webkit-scrollbar-track { background: transparent; }
+.scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-main">歌謡曲ジェネレーター</div>
+    <div class="logo-sub">KAYOKYOKU INSTRUMENTAL STUDIO v1.0</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="contBadge" style="display:none" class="continuous-badge">
+      <span>●</span> 連続生成中
+    </span>
+    <div class="status-dot"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="left-panel scrollbar">
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnCompose" onclick="compose()">🎵 作曲する</button>
+      <button class="btn btn-secondary" id="btnContinuous" onclick="toggleContinuous()">▶▶ 連続生成</button>
+      <button class="btn btn-outline" id="btnStop" onclick="stopPlayback()" disabled>⏹ 停止</button>
+      <button class="btn btn-outline" onclick="saveWav()" id="btnWav" disabled>💾 WAV保存</button>
+      <button class="btn btn-outline" onclick="copyId()" id="btnCopy" disabled>📋 IDコピー</button>
+    </div>
+
+    <div class="now-playing" id="npPanel">
+      <div class="np-header">
+        <div class="np-title">NOW COMPOSING</div>
+        <div id="npStatus" style="font-size:12px;color:var(--muted)">待機中</div>
+      </div>
+      <div class="id-display" id="songIdDisplay">— — — — — — — — — — — —</div>
+      <div class="song-meta" id="songMeta">
+        <div class="meta-item"><div class="meta-label">BPM</div><div class="meta-value" id="metaBpm">—</div></div>
+        <div class="meta-item"><div class="meta-label">キー</div><div class="meta-value" id="metaKey">—</div></div>
+        <div class="meta-item"><div class="meta-label">構成</div><div class="meta-value" id="metaStruct">—</div></div>
+        <div class="meta-item"><div class="meta-label">リズム</div><div class="meta-value" id="metaRhythm">—</div></div>
+        <div class="meta-item"><div class="meta-label">アウトロ</div><div class="meta-value" id="metaOutro">—</div></div>
+        <div class="meta-item"><div class="meta-label">フィーチャー</div><div class="meta-value" id="metaFeat">—</div></div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span id="timeCur">0:00</span>
+          <span id="timeTotal">3:30</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progFill"></div></div>
+      </div>
+    </div>
+
+    <div class="section-bar-wrap">
+      <div class="section-bar-title">SECTION MAP</div>
+      <div class="section-bar" id="sectionBar"></div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="waveCanvas" height="80"></canvas>
+    </div>
+
+    <div class="emotion-wrap">
+      <div class="emotion-title">EMOTION FEATURES</div>
+      <div class="tags" id="emotionTags"></div>
+    </div>
+
+  </div>
+
+  <div class="right-panel scrollbar">
+
+    <div class="panel-section">
+      <div class="panel-title">楽器構成</div>
+      <div id="instList">
+        <div class="instrument-row"><span class="inst-name">主旋律</span><span class="inst-type">—</span></div>
+        <div class="instrument-row"><span class="inst-name">ギター</span><span class="inst-type">—</span></div>
+        <div class="instrument-row"><span class="inst-name">ベース</span><span class="inst-type">—</span></div>
+        <div class="instrument-row"><span class="inst-name">パッド</span><span class="inst-type">—</span></div>
+        <div class="instrument-row"><span class="inst-name">ドラム</span><span class="inst-type">標準</span></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">ログ</div>
+      <div class="log-wrap" id="logWrap"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  KAYOKYOKU GENERATOR — Web Audio API Only
+// ============================================================
+
+let audioCtx = null;
+let masterGain = null;
+let analyser = null;
+let isPlaying = false;
+let isContinuous = false;
+let currentNodes = [];
+let currentSong = null;
+let startTime = 0;
+let totalDuration = 0;
+let rafId = null;
+let scheduledBuffers = [];
+let offlineCtx = null;
+let recordedBuffer = null;
+
+// ============================================================
+// SEEDED RNG
+// ============================================================
+class RNG {
+  constructor(seed) { this.s = seed >>> 0; }
+  next() {
+    this.s ^= this.s << 13;
+    this.s ^= this.s >> 17;
+    this.s ^= this.s << 5;
+    return (this.s >>> 0) / 4294967296;
+  }
+  int(min, max) { return Math.floor(this.next() * (max - min + 1)) + min; }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+}
+
+// ============================================================
+// ID GENERATION
+// ============================================================
+function generateId() {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mi = String(now.getMinutes()).padStart(2, '0');
+  const base = yy + mm + dd + hh + mi;
+  let cs = 0;
+  for (let c of base) cs = (cs * 31 + c.charCodeAt(0)) & 0xFFFF;
+  const csStr = String(cs % 100).padStart(2, '0');
+  return base + csStr;
+}
+
+function idToSeed(id) {
+  let h = 0x811c9dc5;
+  for (let c of id) { h ^= c.charCodeAt(0); h = (h * 0x01000193) >>> 0; }
+  return h;
+}
+
+// ============================================================
+// MUSIC THEORY
+// ============================================================
+const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// Minor scale intervals: W H W W H W W
+const MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10];
+// Harmonic minor (raised 7th sometimes for tension)
+const HARM_MINOR = [0, 2, 3, 5, 7, 8, 11];
+
+function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+function scaleNotes(rootMidi, scale) {
+  return scale.map(i => rootMidi + i);
+}
+
+// Chord voicings in minor key
+function getChords(rootMidi, rng) {
+  // i, bIII, iv, v/V, bVI, bVII
+  const i  = [rootMidi, rootMidi+3, rootMidi+7];
+  const bIII=[rootMidi+3, rootMidi+3+4, rootMidi+3+7];
+  const iv = [rootMidi+5, rootMidi+5+3, rootMidi+5+7];
+  const v  = [rootMidi+7, rootMidi+7+3, rootMidi+7+7]; // minor v
+  const V  = [rootMidi+7, rootMidi+7+4, rootMidi+7+7]; // major V
+  const bVI= [rootMidi+8, rootMidi+8+4, rootMidi+8+7];
+  const bVII=[rootMidi+10,rootMidi+10+4,rootMidi+10+7];
+  return { i, bIII, iv, v, V, bVI, bVII };
+}
+
+// Chord progressions for sections
+function getProgression(section, rng, chords) {
+  const progs = {
+    intro:   [chords.i, chords.bVI, chords.bIII, chords.bVII],
+    A:       [chords.i, chords.iv, chords.bVI, chords.bVII],
+    B:       [chords.bVI, chords.bVII, chords.i, chords.V],
+    chorus:  [chords.i, chords.bVI, chords.bVII, chords.V],
+    bridge:  [chords.iv, chords.bVII, chords.bIII, chords.V],
+    bigChorus:[chords.i, chords.bVI, chords.bVII, chords.V],
+    outro:   [chords.i, chords.bVI, chords.bIII, chords.i],
+  };
+  return progs[section] || progs.A;
+}
+
+// ============================================================
+// SECTION STRUCTURES
+// ============================================================
+const STRUCTURES = [
+  { name: '王道型',      segs: ['イントロ','1番A','1番B','サビ','2番A','2番B','サビ','ブリッジ','大サビ','アウトロ'] },
+  { name: 'サビ頭型',    segs: ['サビ','イントロ','1番A','1番B','サビ','2番A','大サビ','アウトロ'] },
+  { name: 'A-A-B型',    segs: ['イントロ','1番A','サビ','2番A','サビ','大サビ','アウトロ'] },
+  { name: '2ブロック型', segs: ['イントロ','A','B','サビ','ブリッジ','大サビ','アウトロ'] },
+  { name: '転調サビ頭型',segs: ['大サビ','イントロ','1番A','1番B','サビ','2番A','大サビ','アウトロ'] },
+];
+
+const SEG_COLORS = {
+  'イントロ': '#334155', '1番A': '#1e3a5f', '1番B': '#1e4040', 'サビ': '#7c1d4e',
+  '2番A': '#1e3a5f', '2番B': '#1e4040', 'ブリッジ': '#3d2a5e', '大サビ': '#9b1d4e',
+  'アウトロ': '#1a2a1a', 'A': '#1e3a5f', 'B': '#1e4040',
+};
+
+const SEG_BARS = {
+  'イントロ': 4, '1番A': 8, '1番B': 8, 'サビ': 8, '2番A': 8, '2番B': 8,
+  'ブリッジ': 4, '大サビ': 8, 'アウトロ': 4, 'A': 8, 'B': 8,
+};
+
+const SEG_TYPE = {
+  'イントロ': 'intro', '1番A': 'A', '1番B': 'B', 'サビ': 'chorus',
+  '2番A': 'A', '2番B': 'B', 'ブリッジ': 'bridge', '大サビ': 'bigChorus',
+  'アウトロ': 'outro', 'A': 'A', 'B': 'B',
+};
+
+const OUTRO_TYPES = ['フェードアウト','コーダ','余韻','リタルダンド','転回'];
+
+// ============================================================
+// INSTRUMENT TYPES
+// ============================================================
+const MELODY_TYPES  = ['コーラスシンセ','エレクトリックピアノ','ハーモニカ','ストリングスリード'];
+const GUITAR_TYPES  = ['アコースティック','エレキクリーン','ナイロン弦'];
+const BASS_TYPES    = ['エレキ','アップライト','シンセベース'];
+const PAD_TYPES     = ['ストリングス','オルガン','グラスシンセ'];
+const FEATURE_TYPES = ['ギター★','ベース★','ドラム★','パッド★'];
+
+// ============================================================
+// EMOTION FEATURES
+// ============================================================
+const GLOBAL_FEATURES = ['マイナーキー','リバーブ','ビブラート','ダイナミクス変化','ストリングスパッド','ピアノパッド','ウォーキングベース','ギターアルペジオ','フェードアウト','ディレイ','3度ハーモニー','クレッシェンド'];
+const SPOT_FEATURES   = ['サビ転調','ブレイク','ドラムフィル','オクターブ跳躍','弱起','シンコペーション','クロマチック経過音','半音下降ライン'];
+
+// ============================================================
+// AUDIO CONTEXT SETUP
+// ============================================================
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.85;
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    masterGain.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// ============================================================
+// SYNTHESIS HELPERS
+// ============================================================
+function createEnv(ctx, gain, t, a, d, s, r) {
+  gain.setValueAtTime(0, t);
+  gain.linearRampToValueAtTime(1.0, t + a);
+  gain.linearRampToValueAtTime(s, t + a + d);
+  return t + a + d + r;
+}
+
+function addReverb(ctx, dry, wet = 0.35) {
+  const conv = ctx.createConvolver();
+  const len  = ctx.sampleRate * 2.5;
+  const buf  = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5);
+  }
+  conv.buffer = buf;
+  const wg = ctx.createGain(); wg.gain.value = wet;
+  const dg = ctx.createGain(); dg.gain.value = 1 - wet;
+  dry.connect(dg); dg.connect(ctx.destination);
+  dry.connect(conv); conv.connect(wg); wg.connect(ctx.destination);
+  return { dry, wet: wg };
+}
+
+function addDelay(ctx, src, t, f, g = 0.3) {
+  const delay = ctx.createDelay(1.0); delay.delayTime.value = t;
+  const dg = ctx.createGain(); dg.gain.value = g;
+  src.connect(delay); delay.connect(dg); dg.connect(delay);
+  dg.connect(ctx.destination);
+}
+
+// ============================================================
+// OSCILLATOR-BASED INSTRUMENT VOICES
+// ============================================================
+function playMelodyNote(ctx, dest, freq, time, dur, instrType, dynAmp, vibrato=false, harmony=false) {
+  const g = ctx.createGain();
+  g.connect(dest);
+
+  const makeVoice = (f, vol=1) => {
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const vg   = ctx.createGain();
+    vg.connect(g);
+
+    let waveform1 = 'sine', waveform2 = 'sine';
+    let detune = 0;
+    let vol1 = 0.6 * vol, vol2 = 0.4 * vol;
+    let atk = 0.02, dec = 0.1, sus = 0.7, rel = 0.15;
+
+    switch(instrType) {
+      case 'コーラスシンセ':
+        waveform1 = 'sine'; waveform2 = 'sine';
+        detune = 8; vol1 = 0.55; vol2 = 0.45;
+        atk = 0.04; sus = 0.75; rel = 0.2;
+        break;
+      case 'エレクトリックピアノ':
+        waveform1 = 'sine'; waveform2 = 'triangle';
+        detune = 2; vol1 = 0.7; vol2 = 0.3;
+        atk = 0.005; dec = 0.3; sus = 0.5; rel = 0.3;
+        break;
+      case 'ハーモニカ':
+        waveform1 = 'square'; waveform2 = 'sine';
+        detune = 0; vol1 = 0.45; vol2 = 0.55;
+        atk = 0.01; sus = 0.8;
+        break;
+      case 'ストリングスリード':
+        waveform1 = 'sawtooth'; waveform2 = 'sine';
+        detune = 5; vol1 = 0.5; vol2 = 0.5;
+        atk = 0.08; sus = 0.7; rel = 0.3;
+        break;
+    }
+
+    osc1.type = waveform1; osc2.type = waveform2;
+    osc1.frequency.value = f;
+    osc2.frequency.value = f;
+    osc2.detune.value = detune;
+
+    // Vibrato only on long notes or phrase end
+    if (vibrato && dur > 0.4) {
+      const lfo = ctx.createOscillator();
+      const lg  = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      lg.gain.value = 0;
+      lg.gain.setValueAtTime(0, time + dur * 0.6);
+      lg.gain.linearRampToValueAtTime(6, time + dur * 0.75);
+      lfo.connect(lg); lg.connect(osc1.frequency); lg.connect(osc2.frequency);
+      lfo.start(time); lfo.stop(time + dur + 0.05);
+    }
+
+    const g1 = ctx.createGain(); g1.gain.value = vol1 * dynAmp;
+    const g2 = ctx.createGain(); g2.gain.value = vol2 * dynAmp;
+    osc1.connect(g1); osc2.connect(g2); g1.connect(vg); g2.connect(vg);
+
+    vg.gain.setValueAtTime(0, time);
+    vg.gain.linearRampToValueAtTime(1, time + atk);
+    vg.gain.setValueAtTime(1, time + atk + dec);
+    vg.gain.linearRampToValueAtTime(sus, time + Math.min(atk + dec + 0.05, dur * 0.8));
+    vg.gain.setValueAtTime(sus, time + Math.max(0, dur - rel));
+    vg.gain.linearRampToValueAtTime(0, time + dur);
+
+    osc1.start(time); osc2.start(time);
+    osc1.stop(time + dur + 0.05);
+    osc2.stop(time + dur + 0.05);
+    currentNodes.push(osc1, osc2);
+  };
+
+  makeVoice(freq, 1.0);
+  if (harmony) makeVoice(freq * Math.pow(2, 3/12), 0.55); // 3度上
+}
+
+function playBassNote(ctx, dest, freq, time, dur, bassType, dynAmp, octJump=false) {
+  const g = ctx.createGain();
+  g.connect(dest);
+
+  const bf = octJump ? freq * 0.5 : freq;
+  const osc = ctx.createOscillator();
+  osc.type = bassType === 'シンセベース' ? 'sawtooth' : (bassType === 'アップライト' ? 'triangle' : 'square');
+  osc.frequency.value = bf;
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = bassType === 'シンせベース' ? 400 : 800;
+  filt.Q.value = 1;
+  osc.connect(filt); filt.connect(g);
+
+  g.gain.setValueAtTime(0, time);
+  g.gain.linearRampToValueAtTime(0.85 * dynAmp, time + 0.008);
+  g.gain.setValueAtTime(0.85 * dynAmp, time + dur * 0.7);
+  g.gain.linearRampToValueAtTime(0, time + dur);
+
+  osc.start(time); osc.stop(time + dur + 0.05);
+  currentNodes.push(osc);
+
+  // Octave decoration
+  if (octJump) {
+    const o2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    o2.type = osc.type; o2.frequency.value = bf * 2;
+    o2.connect(g2); g2.connect(dest);
+    g2.gain.setValueAtTime(0, time + dur * 0.5);
+    g2.gain.linearRampToValueAtTime(0.5 * dynAmp, time + dur * 0.55);
+    g2.gain.linearRampToValueAtTime(0, time + dur);
+    o2.start(time + dur * 0.5); o2.stop(time + dur + 0.05);
+    currentNodes.push(o2);
+  }
+}
+
+function playGuitarNote(ctx, dest, freq, time, dur, guitarType, dynAmp) {
+  const g  = ctx.createGain();
+  g.connect(dest);
+  const osc = ctx.createOscillator();
+  const env = ctx.createGain();
+
+  osc.type = guitarType === 'エレキクリーン' ? 'triangle' : 'sine';
+  osc.frequency.value = freq;
+
+  // Body resonance
+  const filt = ctx.createBiquadFilter();
+  filt.type = 'bandpass';
+  filt.frequency.value = guitarType === 'ナイロン弦' ? 600 : 900;
+  filt.Q.value = 2;
+
+  // Subtle odd harmonic
+  const osc2 = ctx.createOscillator();
+  const g2   = ctx.createGain();
+  osc2.type = 'sine'; osc2.frequency.value = freq * 3;
+  g2.gain.value = 0.08 * dynAmp;
+  osc2.connect(g2); g2.connect(env);
+
+  osc.connect(filt); filt.connect(env); env.connect(g);
+
+  env.gain.setValueAtTime(0, time);
+  env.gain.linearRampToValueAtTime(0.9 * dynAmp, time + 0.005);
+  env.gain.exponentialRampToValueAtTime(0.001, time + dur);
+
+  osc.start(time); osc.stop(time + dur + 0.05);
+  osc2.start(time); osc2.stop(time + dur + 0.05);
+  currentNodes.push(osc, osc2);
+}
+
+function playDrum(ctx, dest, type, time, vol=0.7) {
+  if (type === 'kick') {
+    const osc = ctx.createOscillator();
+    const g   = ctx.createGain();
+    osc.connect(g); g.connect(dest);
+    osc.frequency.setValueAtTime(140, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.12);
+    g.gain.setValueAtTime(vol * 1.2, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+    osc.start(time); osc.stop(time + 0.3);
+    currentNodes.push(osc);
+  } else if (type === 'snare') {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.06));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g   = ctx.createGain(); g.gain.value = vol;
+    const filt= ctx.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=3000; filt.Q.value=0.7;
+    src.connect(filt); filt.connect(g); g.connect(dest);
+    // Pitch body
+    const osc = ctx.createOscillator(); osc.type='triangle'; osc.frequency.value=200;
+    const og  = ctx.createGain();
+    og.gain.setValueAtTime(vol*0.4, time); og.gain.exponentialRampToValueAtTime(0.001,time+0.08);
+    osc.connect(og); og.connect(dest);
+    src.start(time); osc.start(time); osc.stop(time+0.1);
+    currentNodes.push(src, osc);
+  } else if (type === 'hihat' || type === 'openhat') {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * (type==='openhat'?0.35:0.08), ctx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * (type==='openhat'?0.12:0.02)));
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g   = ctx.createGain(); g.gain.value = vol * 0.55;
+    const f   = ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=8000;
+    src.connect(f); f.connect(g); g.connect(dest);
+    src.start(time);
+    currentNodes.push(src);
+  } else if (type === 'ghost') {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.03));
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g   = ctx.createGain(); g.gain.value = vol * 0.22;
+    const f   = ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=2500; f.Q.value=1;
+    src.connect(f); f.connect(g); g.connect(dest);
+    src.start(time);
+    currentNodes.push(src);
+  }
+}
+
+function playPadChord(ctx, dest, freqs, time, dur, padType, dynAmp) {
+  freqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const g   = ctx.createGain();
+    const filt= ctx.createBiquadFilter();
+
+    osc.type = padType === 'オルガン' ? 'sine' : (padType === 'グラスシンセ' ? 'sine' : 'sawtooth');
+    osc.frequency.value = freq / 2; // lower octave pad
+    filt.type = 'lowpass';
+    filt.frequency.value = padType === 'グラスシンセ' ? 1200 : 2000;
+    filt.Q.value = 0.5;
+
+    osc.connect(filt); filt.connect(g); g.connect(dest);
+
+    const baseVol = (0.2 - i * 0.03) * dynAmp;
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(baseVol, time + 0.3);
+    g.gain.setValueAtTime(baseVol, time + dur - 0.4);
+    g.gain.linearRampToValueAtTime(0, time + dur);
+
+    osc.start(time); osc.stop(time + dur + 0.1);
+    currentNodes.push(osc);
+
+    // Chorus detune for strings pad
+    if (padType === 'ストリングス') {
+      const osc2 = ctx.createOscillator();
+      const g2   = ctx.createGain();
+      osc2.type = 'sawtooth'; osc2.frequency.value = freq / 2;
+      osc2.detune.value = 10;
+      g2.gain.value = baseVol * 0.5;
+      osc2.connect(g2); g2.connect(dest);
+      g2.gain.setValueAtTime(0, time);
+      g2.gain.linearRampToValueAtTime(baseVol * 0.5, time + 0.35);
+      g2.gain.setValueAtTime(baseVol*0.5, time + dur - 0.5);
+      g2.gain.linearRampToValueAtTime(0, time + dur);
+      osc2.start(time); osc2.stop(time + dur + 0.1);
+      currentNodes.push(osc2);
+    }
+  });
+}
+
+// ============================================================
+// MELODY GENERATION (五七調 / 七五調)
+// ============================================================
+function generateMelody(rng, rootMidi, scale, beats, section, isChorus, motif=null, addHarmony=false, addVibrato=false) {
+  // Notes available: A3(57) to C5(72)
+  const available = [];
+  for (let oct = -1; oct <= 1; oct++) {
+    scale.forEach(s => {
+      const n = rootMidi + s + oct * 12;
+      if (n >= 57 && n <= 72) available.push(n);
+    });
+  }
+  available.sort((a,b)=>a-b);
+
+  const isShichigo = rng.next() > 0.5; // 七五 or 五七
+  const pattern = isShichigo ? [7, 5] : [5, 7];
+
+  // 8th note grid: 1 beat = 2 8th notes
+  const eighth = beats / 2 / beats; // length of one 8th note in beats relative
+  const notes = [];
+
+  let cursor = 0;
+  const maxNotes = beats * 2;
+  let prev = available[Math.floor(available.length / 2)];
+
+  // Use motif if provided (chorus core motif)
+  if (isChorus && motif && motif.length > 0) {
+    motif.forEach(n => {
+      notes.push({ midi: n, dur: 0.5, time: cursor });
+      cursor += 0.5;
+    });
+  }
+
+  while (cursor < maxNotes - 0.5) {
+    // Stepwise motion bias, avoid large leaps
+    let next = prev;
+    const step = rng.next();
+    const idx  = available.indexOf(prev);
+    if (step < 0.4) next = available[Math.max(0, idx - 1)];
+    else if (step < 0.8) next = available[Math.min(available.length - 1, idx + 1)];
+    else {
+      // Leap
+      const leap = rng.int(-3, 3);
+      next = available[Math.max(0, Math.min(available.length - 1, idx + leap))];
+    }
+    prev = next;
+
+    // Duration: 8th or quarter or dotted quarter
+    let durBeats = 0.5;
+    const dr = rng.next();
+    if (dr < 0.4) durBeats = 0.5;
+    else if (dr < 0.75) durBeats = 1.0;
+    else durBeats = 1.5;
+
+    if (cursor + durBeats > maxNotes) durBeats = maxNotes - cursor;
+    if (durBeats <= 0) break;
+
+    // Passing tone
+    if (rng.next() < 0.5 && notes.length > 0 && Math.abs(next - prev) === 2) {
+      const pt = (next + prev) / 2;
+      if (Number.isInteger(pt)) {
+        notes.push({ midi: pt, dur: 0.25, time: cursor });
+        cursor += 0.25;
+        durBeats = Math.max(0.25, durBeats - 0.25);
+      }
+    }
+
+    // Syncopation
+    if (rng.next() < 0.15) { cursor += 0.25; }
+
+    const isLong = durBeats >= 1.0;
+    notes.push({ midi: next, dur: durBeats, time: cursor, vibrato: addVibrato && isLong, harmony: addHarmony });
+    cursor += durBeats;
+  }
+
+  return notes;
+}
+
+// ============================================================
+// MOTIF GENERATION
+// ============================================================
+function generateMotif(rng, rootMidi, scale) {
+  const available = [];
+  const useScale = scale;
+  for (let s of useScale) {
+    const n = rootMidi + s;
+    if (n >= 57 && n <= 72) available.push(n);
+  }
+  available.sort((a,b)=>a-b);
+  const len = rng.int(4, 5);
+  const motif = [];
+  let prev = available[Math.floor(available.length / 2)];
+  for (let i = 0; i < len; i++) {
+    const idx = available.indexOf(prev);
+    const step = rng.next();
+    let next;
+    if (step < 0.5) next = available[Math.max(0, idx - 1)];
+    else next = available[Math.min(available.length - 1, idx + 1)];
+    motif.push(next);
+    prev = next;
+  }
+  return motif;
+}
+
+// ============================================================
+// DRUM PATTERNS
+// ============================================================
+function scheduleDrums(ctx, dest, type, startT, bars, bps, rng, featDrum=false) {
+  const beat = 1 / bps;
+  const bar  = beat * 4;
+  const sixteenth = beat / 4;
+
+  for (let b = 0; b < bars * 4; b++) {
+    const t = startT + b * beat;
+
+    if (type === 'intro') { // half time
+      if (b % 8 === 0) playDrum(ctx, dest, 'kick', t, 0.7);
+      if (b % 8 === 4) playDrum(ctx, dest, 'snare', t, 0.65);
+      if (b % 2 === 0) playDrum(ctx, dest, 'hihat', t, 0.4);
+    } else if (type === 'A') { // 4-beat
+      if (b % 4 === 0 || b % 4 === 2) playDrum(ctx, dest, 'kick', t, 0.75);
+      if (b % 4 === 2) playDrum(ctx, dest, 'snare', t, 0.7);
+      playDrum(ctx, dest, 'hihat', t, 0.38);
+      if (featDrum && b % 4 === 3) {
+        playDrum(ctx, dest, 'ghost', t + sixteenth, 0.3);
+        playDrum(ctx, dest, 'ghost', t + sixteenth * 3, 0.25);
+      }
+    } else if (type === 'B') { // off-beat HH + 16th kick
+      if (b % 4 === 0) playDrum(ctx, dest, 'kick', t, 0.75);
+      if (b % 4 === 2) { playDrum(ctx, dest, 'kick', t, 0.55); playDrum(ctx, dest, 'kick', t + sixteenth * 3, 0.45); }
+      if (b % 4 === 2) playDrum(ctx, dest, 'snare', t, 0.7);
+      if (b % 2 === 1) playDrum(ctx, dest, 'hihat', t, 0.42);
+    } else if (type === 'chorus') { // open HH + ghost snare + 16th kick
+      if (b % 4 === 0 || b % 4 === 2) playDrum(ctx, dest, 'kick', t, 0.85);
+      if (b % 4 === 2) playDrum(ctx, dest, 'snare', t, 0.75);
+      if (b % 4 === 1 || b % 4 === 3) playDrum(ctx, dest, 'openhat', t, 0.55);
+      else playDrum(ctx, dest, 'hihat', t, 0.4);
+      if (featDrum) {
+        // Ghost notes
+        [1, 3].forEach(off => playDrum(ctx, dest, 'ghost', t + sixteenth * off, 0.28));
+        // Extra 16th kick
+        if (b % 4 === 0) playDrum(ctx, dest, 'kick', t + sixteenth * 3, 0.5);
+      }
+    } else if (type === 'bridge') { // front half: half time, back: normal
+      const halfBars = Math.floor(bars / 2) * 4;
+      if (b < halfBars) {
+        if (b % 8 === 0) playDrum(ctx, dest, 'kick', t, 0.7);
+        if (b % 8 === 4) playDrum(ctx, dest, 'snare', t, 0.65);
+        if (b % 2 === 0) playDrum(ctx, dest, 'hihat', t, 0.38);
+      } else {
+        if (b % 4 === 0 || b % 4 === 2) playDrum(ctx, dest, 'kick', t, 0.75);
+        if (b % 4 === 2) playDrum(ctx, dest, 'snare', t, 0.7);
+        playDrum(ctx, dest, 'hihat', t, 0.38);
+      }
+    } else { // outro
+      if (b % 4 === 0) playDrum(ctx, dest, 'kick', t, 0.6);
+      if (b % 4 === 2) playDrum(ctx, dest, 'snare', t, 0.55);
+      if (b % 2 === 0) playDrum(ctx, dest, 'hihat', t, 0.3);
+    }
+
+    // Drum fill at end of phrase (every 4 bars)
+    if (featDrum && b === bars * 4 - 4) {
+      for (let f = 0; f < 4; f++) {
+        playDrum(ctx, dest, 'snare', t + sixteenth * f * 2, 0.5 + f * 0.05);
+      }
+    }
+    if (b === bars * 4 - 2) {
+      playDrum(ctx, dest, 'snare', t, 0.55);
+      playDrum(ctx, dest, 'kick', t + sixteenth * 2, 0.5);
+    }
+  }
+}
+
+// ============================================================
+// GUITAR PATTERNS
+// ============================================================
+function scheduleGuitar(ctx, dest, chords, type, startT, bars, bps, rng, guitarType, dynAmp, featGuitar=false) {
+  const beat    = 1 / bps;
+  const bar     = beat * 4;
+  const eighth  = beat / 2;
+  const sixteenth = beat / 4;
+
+  for (let bar_i = 0; bar_i < bars; bar_i++) {
+    const chord = chords[bar_i % chords.length];
+    const barT  = startT + bar_i * bar;
+
+    if (type === 'intro') {
+      // Arpeggio pattern
+      const pat = [0,1,2,1,0,1,2,1];
+      pat.forEach((ni, si) => {
+        const n  = chord[ni % chord.length];
+        const f  = midiToFreq(n + 12);
+        playGuitarNote(ctx, dest, f, barT + si * eighth, eighth * 0.9, guitarType, dynAmp * 0.6);
+      });
+    } else if (type === 'A') {
+      // Cutting (off-beat 8ths)
+      [1,3,5,7].forEach(si => {
+        const f = midiToFreq(chord[0] + 12);
+        playGuitarNote(ctx, dest, f, barT + si * eighth, eighth * 0.4, guitarType, dynAmp * 0.45);
+      });
+      // Obbligato on feature
+      if (featGuitar) {
+        const scale = MINOR_SCALE;
+        for (let si = 0; si < 8; si++) {
+          const n = chord[0] + scale[si % scale.length] + 12;
+          playGuitarNote(ctx, dest, midiToFreq(n), barT + si * eighth, eighth * 0.8, guitarType, dynAmp * 0.5);
+        }
+      }
+    } else if (type === 'B') {
+      // Backing chords
+      [0,2,4,6].forEach(si => {
+        chord.forEach((n, ni) => {
+          const f = midiToFreq(n + 12);
+          playGuitarNote(ctx, dest, f, barT + si * eighth + ni * 0.02, eighth * 0.7, guitarType, dynAmp * (0.5 - ni * 0.06));
+        });
+      });
+    } else if (type === 'chorus') {
+      // 8th strum
+      for (let si = 0; si < 8; si++) {
+        chord.forEach((n, ni) => {
+          playGuitarNote(ctx, dest, midiToFreq(n + 12), barT + si * eighth + ni * 0.015, eighth * 0.85, guitarType, dynAmp * (0.7 - ni * 0.08));
+        });
+        if (featGuitar && si < 7) {
+          // 16th arpeggio between strums
+          const n = chord[si % chord.length];
+          playGuitarNote(ctx, dest, midiToFreq(n + 24), barT + si * eighth + sixteenth, sixteenth * 0.8, guitarType, dynAmp * 0.4);
+        }
+      }
+    } else if (type === 'bridge') {
+      // Arpeggio
+      const pat = [0,1,2,1];
+      pat.forEach((ni, si) => {
+        const n = chord[ni % chord.length];
+        playGuitarNote(ctx, dest, midiToFreq(n + 12), barT + si * beat, beat * 0.9, guitarType, dynAmp * 0.55);
+      });
+    } else {
+      // Outro: gentle arpeggio
+      [0,1,2].forEach((ni, si) => {
+        const n = chord[ni % chord.length];
+        playGuitarNote(ctx, dest, midiToFreq(n + 12), barT + si * beat, beat * 0.9, guitarType, dynAmp * 0.4);
+      });
+    }
+  }
+}
+
+// ============================================================
+// BASS PATTERNS
+// ============================================================
+function scheduleBass(ctx, dest, chords, type, startT, bars, bps, rng, bassType, dynAmp, featBass=false) {
+  const beat    = 1 / bps;
+  const bar     = beat * 4;
+  const eighth  = beat / 2;
+  const scale   = MINOR_SCALE;
+
+  for (let bar_i = 0; bar_i < bars; bar_i++) {
+    const chord = chords[bar_i % chords.length];
+    const root  = chord[0] - 12; // bass octave
+    const barT  = startT + bar_i * bar;
+
+    if (type === 'A') {
+      // Walking bass with chromatic approach
+      [0,1,2,3].forEach(b => {
+        const nextChord = chords[(bar_i + (b===3?1:0)) % chords.length];
+        const nextRoot  = nextChord[0] - 12;
+        let n = root;
+        if (b === 0) n = root;
+        else if (b === 1) n = root + scale[2]; // 3rd
+        else if (b === 2) n = root + scale[4]; // 5th
+        else n = nextRoot - 1; // chromatic approach
+        const oct = featBass ? (rng.next() < 0.15) : false;
+        playBassNote(ctx, dest, midiToFreq(n), barT + b * beat, beat * 0.9, bassType, dynAmp, oct);
+      });
+    } else if (type === 'B') {
+      // Root -> 5th -> Octave
+      [root, root + 7, root + 12].forEach((n, i) => {
+        const dur = i === 2 ? beat : beat * 0.9;
+        playBassNote(ctx, dest, midiToFreq(n), barT + i * beat, dur, bassType, dynAmp);
+      });
+      playBassNote(ctx, dest, midiToFreq(root), barT + 3 * beat, beat * 0.9, bassType, dynAmp);
+    } else if (type === 'chorus') {
+      // Root punch + octave decoration
+      playBassNote(ctx, dest, midiToFreq(root), barT, beat * 0.85, bassType, dynAmp * 1.1);
+      if (featBass) {
+        // 16th running line
+        for (let s = 1; s < 8; s++) {
+          const si   = s % scale.length;
+          const n    = root + scale[si];
+          const slap = (s === 4 || s === 6);
+          playBassNote(ctx, dest, midiToFreq(n), barT + s * eighth, eighth * 0.8, bassType, dynAmp * (slap ? 0.9 : 0.65), slap);
+        }
+      } else {
+        playBassNote(ctx, dest, midiToFreq(root), barT + beat * 2, beat * 0.85, bassType, dynAmp);
+        playBassNote(ctx, dest, midiToFreq(root + 12), barT + beat * 3, beat * 0.5, bassType, dynAmp * 0.7);
+      }
+    } else if (type === 'bridge') {
+      // Half-step descending
+      for (let s = 0; s < 4; s++) {
+        playBassNote(ctx, dest, midiToFreq(root - s), barT + s * beat, beat * 0.9, bassType, dynAmp * 0.8);
+      }
+    } else if (type === 'intro') {
+      playBassNote(ctx, dest, midiToFreq(root), barT, beat * 0.85, bassType, dynAmp * 0.7);
+      playBassNote(ctx, dest, midiToFreq(root + 7), barT + beat * 2, beat * 0.85, bassType, dynAmp * 0.65);
+    } else {
+      playBassNote(ctx, dest, midiToFreq(root), barT, beat * 0.85, bassType, dynAmp * (type==='outro' ? 0.6 : 0.8));
+      playBassNote(ctx, dest, midiToFreq(root + 7), barT + beat * 2, beat * 0.85, bassType, dynAmp * 0.6);
+    }
+  }
+}
+
+// ============================================================
+// MAIN COMPOSITION ENGINE
+// ============================================================
+function composeSong(id) {
+  const seed  = idToSeed(id);
+  const rng   = new RNG(seed);
+
+  // Pick key (minor)
+  const rootMidi = rng.int(57, 65); // A3 to E4 range
+  const keyName  = KEYS[rootMidi % 12] + 'm';
+  const scale    = rng.next() > 0.3 ? MINOR_SCALE : HARM_MINOR;
+
+  // BPM: 68–112 for kayokyoku
+  const bpm    = rng.int(72, 108);
+  const bps    = bpm / 60;
+  const beat   = 1 / bps;
+  const bar    = beat * 4;
+
+  // Structure
+  const struct = rng.pick(STRUCTURES);
+
+  // Outro type
+  const outroType = rng.pick(OUTRO_TYPES);
+
+  // Instruments
+  const melodyType  = rng.pick(MELODY_TYPES);
+  const guitarType  = rng.pick(GUITAR_TYPES);
+  const bassType    = rng.pick(BASS_TYPES);
+  const padType     = rng.pick(PAD_TYPES);
+  const featureInst = rng.pick(FEATURE_TYPES);
+
+  // Rhythm type
+  const rhythmType = rng.next() > 0.5 ? '七五調' : '五七調';
+
+  // Mix balance (per-instrument random ±18%)
+  const mixMel  = 0.8 + (rng.next() - 0.5) * 0.36;
+  const mixGtr  = 0.65 + (rng.next() - 0.5) * 0.36;
+  const mixBass = 0.75 + (rng.next() - 0.5) * 0.36;
+  const mixDrum = 0.7  + (rng.next() - 0.5) * 0.36;
+  const mixPad  = 0.5  + (rng.next() - 0.5) * 0.36;
+  const FEAT_BOOST = 1.4;
+
+  // Feature boosts
+  const featGuitar = featureInst === 'ギター★';
+  const featBass   = featureInst === 'ベース★';
+  const featDrum   = featureInst === 'ドラム★';
+  const featPad    = featureInst === 'パッド★';
+
+  // Emotion features
+  const allGlobal = rng.shuffle(GLOBAL_FEATURES).slice(0, rng.int(6, GLOBAL_FEATURES.length));
+  const allSpot   = rng.shuffle(SPOT_FEATURES).slice(0, rng.int(3, SPOT_FEATURES.length));
+
+  const hasHarmony    = allGlobal.includes('3度ハーモニー');
+  const hasDelay      = allGlobal.includes('ディレイ');
+  const hasCrescendo  = allGlobal.includes('クレッシェンド');
+  const hasTranspose  = allSpot.includes('サビ転調');
+  const hasBreak      = allSpot.includes('ブレイク');
+
+  // Generate core motif
+  const motif = generateMotif(rng, rootMidi, scale);
+
+  // Build section list with bar counts
+  const sections = struct.segs.map(name => {
+    const bars = SEG_BARS[name] || 8;
+    const type = SEG_TYPE[name] || 'A';
+    return { name, bars, type };
+  });
+
+  // Calculate total bars & duration
+  const totalBars = sections.reduce((s, sec) => s + sec.bars, 0);
+  const totalSec  = totalBars * bar;
+
+  // Setup audio context routing
+  const ctx  = getAudioCtx();
+  const now  = ctx.currentTime + 0.1;
+
+  // Per-section volume automation for crescendo/dynamics
+  const dynMap = {};
+  sections.forEach((sec, i) => {
+    let base = 0.8;
+    if (sec.type === 'chorus' || sec.type === 'bigChorus') base = 1.0;
+    if (sec.type === 'intro' || sec.type === 'outro') base = 0.6;
+    if (sec.type === 'bridge') base = 0.75;
+    if (hasCrescendo && i > sections.length * 0.6) base *= 1.0 + (i - sections.length * 0.6) / sections.length * 0.3;
+    dynMap[i] = base;
+  });
+
+  // Create reverb bus
+  const reverbConv = ctx.createConvolver();
+  const revLen     = ctx.sampleRate * 2.8;
+  const revBuf     = ctx.createBuffer(2, revLen, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = revBuf.getChannelData(ch);
+    for (let i = 0; i < revLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / revLen, 2.2);
+  }
+  reverbConv.buffer = revBuf;
+  const revGain = ctx.createGain(); revGain.gain.value = 0.28;
+  const dryGain = ctx.createGain(); dryGain.gain.value = 0.82;
+
+  // Delay bus
+  const delayNode = ctx.createDelay(1.0); delayNode.delayTime.value = beat * 0.75;
+  const delayGain = ctx.createGain(); delayGain.gain.value = hasDelay ? 0.18 : 0;
+  delayNode.connect(delayGain); delayGain.connect(delayNode); delayGain.connect(masterGain);
+
+  // Route: dry -> masterGain, dry -> reverb -> masterGain
+  const busNode = ctx.createGain(); busNode.gain.value = 1.0;
+  busNode.connect(dryGain); dryGain.connect(masterGain);
+  busNode.connect(reverbConv); reverbConv.connect(revGain); revGain.connect(masterGain);
+  busNode.connect(delayNode);
+
+  // Schedule all sections
+  let cursor = now;
+  sections.forEach((sec, sIdx) => {
+    const dynAmp = dynMap[sIdx];
+    const secBars = sec.bars;
+    const chords  = getChords(rootMidi, rng);
+    const prog    = getProgression(sec.type, rng, chords);
+
+    // Transpose for big chorus if feature enabled
+    const transposeAmt = (hasTranspose && (sec.type === 'bigChorus')) ? 2 : 0;
+    const adjRoot = rootMidi + transposeAmt;
+    const adjScale = scale;
+    const adjProg = transposeAmt > 0 ? getProgression(sec.type, rng, getChords(adjRoot, rng)) : prog;
+
+    // Break: silence first beat
+    const breakOffset = (hasBreak && sec.type === 'bridge') ? beat : 0;
+
+    // Pad
+    const padVol = mixPad * dynAmp * (featPad ? FEAT_BOOST * 0.7 : 1.0);
+    for (let b = 0; b < secBars; b++) {
+      const chord = adjProg[b % adjProg.length];
+      playPadChord(ctx, busNode, chord, cursor + breakOffset + b * bar, bar * 0.98, padType, padVol);
+      // Counter melody for feature pad
+      if (featPad && sec.type === 'chorus') {
+        const cmNotes = [adjRoot+7, adjRoot+5, adjRoot+3, adjRoot+5];
+        cmNotes.forEach((n, ni) => {
+          playMelodyNote(ctx, busNode, midiToFreq(n), cursor + b * bar + ni * beat, beat * 0.85, 'コーラスシンセ', padVol * 0.45, false, false);
+        });
+      }
+    }
+
+    // Drums
+    const drumVol = mixDrum * dynAmp * (featDrum ? FEAT_BOOST : 1.0);
+    const drumType = {
+      'intro': 'intro', 'A': 'A', 'B': 'B', 'chorus': 'chorus',
+      'bigChorus': 'chorus', 'bridge': 'bridge', 'outro': 'outro'
+    }[sec.type] || 'A';
+    scheduleDrums(ctx, busNode, drumType, cursor + breakOffset, secBars, bps, rng, featDrum);
+
+    // Guitar
+    const gtrVol = mixGtr * dynAmp * (featGuitar ? FEAT_BOOST : 1.0);
+    const gtrType = {
+      'intro': 'intro', 'A': 'A', 'B': 'B', 'chorus': 'chorus',
+      'bigChorus': 'chorus', 'bridge': 'bridge', 'outro': 'outro'
+    }[sec.type] || 'A';
+    scheduleGuitar(ctx, busNode, adjProg, gtrType, cursor + breakOffset, secBars, bps, rng, guitarType, gtrVol, featGuitar);
+
+    // Bass
+    const bassVol = mixBass * dynAmp * (featBass ? FEAT_BOOST : 1.0);
+    const bassType2 = {
+      'intro': 'intro', 'A': 'A', 'B': 'B', 'chorus': 'chorus',
+      'bigChorus': 'chorus', 'bridge': 'bridge', 'outro': 'outro'
+    }[sec.type] || 'A';
+    scheduleBass(ctx, busNode, adjProg, bassType2, cursor + breakOffset, secBars, bps, rng, bassType, bassVol, featBass);
+
+    // Melody
+    const melVol    = mixMel * dynAmp * (featGuitar || featPad ? 0.85 : 1.0);
+    const isChorus  = sec.type === 'chorus' || sec.type === 'bigChorus';
+    const addVib    = isChorus;
+    const addHarm   = hasHarmony && isChorus;
+    const usedMotif = (sec.type === 'intro' || isChorus) ? motif : null;
+
+    // 2 bars per melody phrase
+    for (let ph = 0; ph < secBars; ph += 2) {
+      const phBars  = Math.min(2, secBars - ph);
+      const phBeats = phBars * 4;
+      const notes   = generateMelody(rng, adjRoot, adjScale, phBeats, sec.type, isChorus, usedMotif, addHarm, addVib);
+      notes.forEach(n => {
+        const t    = cursor + breakOffset + (ph + n.time / 4) * bar;
+        const dur  = n.dur / 4 * bar * 0.92;
+        const freq = midiToFreq(n.midi);
+        playMelodyNote(ctx, busNode, freq, t, dur, melodyType, melVol, n.vibrato || false, n.harmony || false);
+      });
+    }
+
+    // Outro volume automation
+    if (sec.type === 'outro') {
+      if (outroType === 'フェードアウト') {
+        masterGain.gain.setValueAtTime(0.85, cursor);
+        masterGain.gain.linearRampToValueAtTime(0.7, cursor + secBars * bar * 0.3);
+        masterGain.gain.linearRampToValueAtTime(0.7, cursor + secBars * bar);
+      } else if (outroType === 'リタルダンド') {
+        // Simulated slow-down via long reverb tail — audio only
+        revGain.gain.setValueAtTime(0.28, cursor);
+        revGain.gain.linearRampToValueAtTime(0.55, cursor + secBars * bar);
+      }
+      // All outros keep volume >= 0.7 * dynAmp per spec
+    }
+
+    cursor += secBars * bar;
+  });
+
+  // Final fade for all outro types
+  masterGain.gain.setValueAtTime(masterGain.gain.value || 0.85, cursor - 2);
+  masterGain.gain.linearRampToValueAtTime(0.0, cursor + 0.5);
+
+  return {
+    id, keyName, bpm, structure: struct.name, rhythmType,
+    outroType, featureInst, melodyType, guitarType, bassType, padType,
+    sections, totalDuration: cursor - now + 0.5,
+    emotionGlobal: allGlobal, emotionSpot: allSpot,
+    startTime: now
+  };
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function log(msg, type='') {
+  const el = document.getElementById('logWrap');
+  const d  = document.createElement('div');
+  d.className = `log-line ${type}`;
+  d.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateMeta(song) {
+  document.getElementById('songIdDisplay').textContent = song.id;
+  document.getElementById('metaBpm').textContent = `${song.bpm} BPM`;
+  document.getElementById('metaKey').textContent = song.keyName;
+  document.getElementById('metaStruct').textContent = song.structure;
+  document.getElementById('metaRhythm').textContent = song.rhythmType;
+  document.getElementById('metaOutro').textContent = song.outroType;
+  document.getElementById('metaFeat').textContent = song.featureInst;
+  document.getElementById('npStatus').textContent = '再生中';
+
+  // Section bar
+  const bar = document.getElementById('sectionBar');
+  bar.innerHTML = '';
+  const totalBars = song.sections.reduce((s,x) => s + x.bars, 0);
+  song.sections.forEach((sec, i) => {
+    const seg = document.createElement('div');
+    seg.className = 'section-seg';
+    seg.id = `seg-${i}`;
+    seg.style.flexBasis = `${(sec.bars / totalBars) * 100}%`;
+    seg.style.flexGrow = '0';
+    seg.style.background = SEG_COLORS[sec.name] || '#1a2a3a';
+    seg.textContent = sec.name;
+    bar.appendChild(seg);
+  });
+
+  // Instruments panel
+  document.getElementById('instList').innerHTML = `
+    <div class="instrument-row"><span class="inst-name">主旋律</span><span class="inst-type">${song.melodyType}</span>${song.featureInst.includes('パッド') ? '<span class="inst-featured">★</span>' : ''}</div>
+    <div class="instrument-row"><span class="inst-name">ギター</span><span class="inst-type">${song.guitarType}</span>${song.featureInst === 'ギター★' ? '<span class="inst-featured">フィーチャー★</span>' : ''}</div>
+    <div class="instrument-row"><span class="inst-name">ベース</span><span class="inst-type">${song.bassType}</span>${song.featureInst === 'ベース★' ? '<span class="inst-featured">フィーチャー★</span>' : ''}</div>
+    <div class="instrument-row"><span class="inst-name">パッド</span><span class="inst-type">${song.padType}</span>${song.featureInst === 'パッド★' ? '<span class="inst-featured">フィーチャー★</span>' : ''}</div>
+    <div class="instrument-row"><span class="inst-name">ドラム</span><span class="inst-type">標準</span>${song.featureInst === 'ドラム★' ? '<span class="inst-featured">フィーチャー★</span>' : ''}</div>
+  `;
+
+  // Emotion tags
+  const tagsEl = document.getElementById('emotionTags');
+  tagsEl.innerHTML = '';
+  song.emotionGlobal.forEach(f => {
+    const t = document.createElement('span');
+    t.className = 'tag tag-global'; t.textContent = f;
+    tagsEl.appendChild(t);
+  });
+  song.emotionSpot.forEach(f => {
+    const t = document.createElement('span');
+    t.className = 'tag tag-spot'; t.textContent = f;
+    tagsEl.appendChild(t);
+  });
+
+  document.getElementById('timeTotal').textContent = formatTime(song.totalDuration);
+  document.getElementById('btnWav').disabled = false;
+  document.getElementById('btnCopy').disabled = false;
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function updateProgress(song) {
+  if (!isPlaying) return;
+  const ctx     = getAudioCtx();
+  const elapsed = ctx.currentTime - song.startTime;
+  const pct     = Math.min(100, elapsed / song.totalDuration * 100);
+  document.getElementById('progFill').style.width = `${pct}%`;
+  document.getElementById('timeCur').textContent   = formatTime(Math.max(0, elapsed));
+
+  // Highlight current section
+  let cumBars = 0;
+  const bps   = song.bpm / 60;
+  const bar   = (1/bps) * 4;
+  song.sections.forEach((sec, i) => {
+    const secStart = cumBars * bar;
+    const secEnd   = (cumBars + sec.bars) * bar;
+    const el       = document.getElementById(`seg-${i}`);
+    if (el) el.classList.toggle('active', elapsed >= secStart && elapsed < secEnd);
+    cumBars += sec.bars;
+  });
+
+  if (elapsed < song.totalDuration) {
+    rafId = requestAnimationFrame(() => updateProgress(song));
+  } else {
+    onSongEnd();
+  }
+}
+
+// Waveform
+function drawWave() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx2d  = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth * devicePixelRatio;
+  canvas.height = 80 * devicePixelRatio;
+  ctx2d.scale(devicePixelRatio, devicePixelRatio);
+
+  if (!analyser) { requestAnimationFrame(drawWave); return; }
+
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+
+  ctx2d.clearRect(0, 0, canvas.offsetWidth, 80);
+  ctx2d.strokeStyle = '#ff6b9d';
+  ctx2d.lineWidth = 1.5;
+  ctx2d.shadowBlur = 6;
+  ctx2d.shadowColor = '#ff6b9d';
+  ctx2d.beginPath();
+
+  for (let i = 0; i < data.length; i++) {
+    const x = (i / data.length) * canvas.offsetWidth;
+    const y = ((data[i] / 128) - 1) * 35 + 40;
+    i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+  }
+  ctx2d.stroke();
+  requestAnimationFrame(drawWave);
+}
+
+// ============================================================
+// PLAYBACK CONTROL
+// ============================================================
+function stopNodes() {
+  currentNodes.forEach(n => { try { n.stop(0); } catch(e){} });
+  currentNodes = [];
+  masterGain && (masterGain.gain.value = 0.85);
+}
+
+function stopPlayback() {
+  isPlaying = false;
+  isContinuous = false;
+  cancelAnimationFrame(rafId);
+  stopNodes();
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('btnContinuous').textContent = '▶▶ 連続生成';
+  document.getElementById('contBadge').style.display = 'none';
+  document.getElementById('npStatus').textContent = '停止';
+  log('再生停止', 'warn');
+}
+
+function onSongEnd() {
+  isPlaying = false;
+  document.getElementById('npStatus').textContent = '完了';
+  log('再生完了', 'ok');
+  if (isContinuous) {
+    setTimeout(() => { if (isContinuous) compose(); }, 800);
+  } else {
+    document.getElementById('btnStop').disabled = true;
+  }
+}
+
+function toggleContinuous() {
+  if (isContinuous) {
+    isContinuous = false;
+    document.getElementById('btnContinuous').textContent = '▶▶ 連続生成';
+    document.getElementById('contBadge').style.display = 'none';
+    log('連続生成停止', 'warn');
+  } else {
+    isContinuous = true;
+    document.getElementById('btnContinuous').textContent = '⏸ 連続停止';
+    document.getElementById('contBadge').style.display = 'inline-flex';
+    log('連続生成開始', 'info');
+    if (!isPlaying) compose();
+  }
+}
+
+function compose() {
+  getAudioCtx();
+  stopNodes();
+  cancelAnimationFrame(rafId);
+
+  const id   = generateId();
+  log(`作曲開始: ${id}`, 'info');
+
+  masterGain.gain.value = 0.85;
+  isPlaying = true;
+
+  try {
+    const song     = composeSong(id);
+    currentSong    = song;
+    startTime      = song.startTime;
+    totalDuration  = song.totalDuration;
+    recordedBuffer = null;
+
+    updateMeta(song);
+    log(`BPM:${song.bpm} Key:${song.keyName} ${song.structure}`, 'ok');
+    log(`フィーチャー: ${song.featureInst}`, 'ok');
+
+    document.getElementById('btnStop').disabled = false;
+    rafId = requestAnimationFrame(() => updateProgress(song));
+  } catch(e) {
+    log('エラー: ' + e.message, 'warn');
+    console.error(e);
+    isPlaying = false;
+  }
+}
+
+// ============================================================
+// WAV EXPORT (offline render)
+// ============================================================
+async function saveWav() {
+  if (!currentSong) return;
+  log('WAVレンダリング開始...', 'info');
+  const song     = currentSong;
+  const sampleRate = 44100;
+  const dur      = Math.ceil(song.totalDuration) + 1;
+  const offCtx   = new OfflineAudioContext(2, sampleRate * dur, sampleRate);
+
+  // Recreate reverb bus for offline
+  const offMaster = offCtx.createGain(); offMaster.gain.value = 0.85;
+  const offRev    = offCtx.createConvolver();
+  const revBuf    = offCtx.createBuffer(2, sampleRate * 2.8, sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = revBuf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,2.2);
+  }
+  offRev.buffer = revBuf;
+  const offRevG = offCtx.createGain(); offRevG.gain.value = 0.28;
+  const offDryG = offCtx.createGain(); offDryG.gain.value = 0.82;
+  const offBus  = offCtx.createGain(); offBus.gain.value = 1.0;
+  offBus.connect(offDryG); offDryG.connect(offMaster);
+  offBus.connect(offRev); offRev.connect(offRevG); offRevG.connect(offMaster);
+  offMaster.connect(offCtx.destination);
+
+  const offNodes = [];
+  const origNodes = currentNodes;
+  currentNodes = offNodes;
+  const origCtx  = audioCtx;
+  // Temporarily swap context reference for scheduling
+  audioCtx = offCtx;
+  masterGain = offMaster;
+
+  const rng2 = new RNG(idToSeed(song.id));
+  // Re-run composition on offline context
+  composeSongOffline(offCtx, offBus, song, offNodes);
+
+  audioCtx   = origCtx;
+  masterGain = origCtx ? origCtx.createGain() : null;
+  if (masterGain) {
+    masterGain.gain.value = 0.85;
+    const a2 = origCtx.createAnalyser(); a2.fftSize = 2048;
+    masterGain.connect(a2); a2.connect(origCtx.destination);
+    analyser = a2;
+  }
+  currentNodes = origNodes;
+
+  try {
+    const rendered = await offCtx.startRendering();
+    const wav      = bufferToWav(rendered);
+    const blob     = new Blob([wav], { type: 'audio/wav' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href = url; a.download = `kayokyoku_${song.id}.wav`; a.click();
+    URL.revokeObjectURL(url);
+    log('WAV保存完了', 'ok');
+  } catch(e) {
+    log('WAVエラー: ' + e.message, 'warn');
+    console.error(e);
+  }
+}
+
+function composeSongOffline(offCtx, offBus, song, offNodes) {
+  const rng   = new RNG(idToSeed(song.id));
+  const rootMidi = parseInt(KEYS.indexOf(song.keyName.replace('m','')) + 57) % 12 + 57;
+  // Actually reuse the full compose logic — just re-schedule
+  const seed  = idToSeed(song.id);
+  const rng2  = new RNG(seed);
+  const adjRootMidi = rng2.int(57, 65);
+  const scale   = rng2.next() > 0.3 ? MINOR_SCALE : HARM_MINOR;
+  const bpm     = rng2.int(72, 108);
+  const bps     = bpm / 60;
+  const bar     = (1/bps) * 4;
+  const motif   = generateMotif(rng2, adjRootMidi, scale);
+  const struct  = rng2.pick(STRUCTURES);
+  const outroType = rng2.pick(OUTRO_TYPES);
+  const melodyType = rng2.pick(MELODY_TYPES);
+  const guitarType = rng2.pick(GUITAR_TYPES);
+  const bassType   = rng2.pick(BASS_TYPES);
+  const padType    = rng2.pick(PAD_TYPES);
+  const featureInst= rng2.pick(FEATURE_TYPES);
+  const mixMel  = 0.8 + (rng2.next()-0.5)*0.36;
+  const mixGtr  = 0.65+ (rng2.next()-0.5)*0.36;
+  const mixBass = 0.75+ (rng2.next()-0.5)*0.36;
+  const mixDrum = 0.7 + (rng2.next()-0.5)*0.36;
+  const mixPad  = 0.5 + (rng2.next()-0.5)*0.36;
+  const FEAT_BOOST=1.4;
+  const featGuitar=featureInst==='ギター★', featBass=featureInst==='ベース★';
+  const featDrum=featureInst==='ドラム★', featPad=featureInst==='パッド★';
+  const allGlobal=rng2.shuffle(GLOBAL_FEATURES).slice(0,rng2.int(6,GLOBAL_FEATURES.length));
+  const allSpot=rng2.shuffle(SPOT_FEATURES).slice(0,rng2.int(3,SPOT_FEATURES.length));
+  const hasHarmony=allGlobal.includes('3度ハーモニー');
+  const hasDelay=allGlobal.includes('ディレイ');
+  const hasCrescendo=allGlobal.includes('クレッシェンド');
+  const hasTranspose=allSpot.includes('サビ転調');
+  const hasBreak=allSpot.includes('ブレイク');
+  const sections=struct.segs.map(name=>({name,bars:SEG_BARS[name]||8,type:SEG_TYPE[name]||'A'}));
+  const now=0.05;
+  let cursor=now;
+  const prevNodes=currentNodes; currentNodes=offNodes;
+  const prevCtx=audioCtx; audioCtx=offCtx;
+  sections.forEach((sec,sIdx)=>{
+    let dynAmp=0.8;
+    if(sec.type==='chorus'||sec.type==='bigChorus')dynAmp=1.0;
+    if(sec.type==='intro'||sec.type==='outro')dynAmp=0.6;
+    if(sec.type==='bridge')dynAmp=0.75;
+    const secBars=sec.bars;
+    const chords=getChords(adjRootMidi,rng2);
+    const prog=getProgression(sec.type,rng2,chords);
+    const transposeAmt=(hasTranspose&&(sec.type==='bigChorus'))?2:0;
+    const adjRoot=adjRootMidi+transposeAmt;
+    const adjProg=transposeAmt>0?getProgression(sec.type,rng2,getChords(adjRoot,rng2)):prog;
+    const breakOffset=(hasBreak&&sec.type==='bridge')?(1/bps):0;
+    const padVol=mixPad*dynAmp*(featPad?FEAT_BOOST*0.7:1.0);
+    for(let b=0;b<secBars;b++){
+      const chord=adjProg[b%adjProg.length];
+      playPadChord(offCtx,offBus,chord,cursor+breakOffset+b*bar,bar*0.98,padType,padVol);
+    }
+    const drumType={intro:'intro',A:'A',B:'B',chorus:'chorus',bigChorus:'chorus',bridge:'bridge',outro:'outro'}[sec.type]||'A';
+    scheduleDrums(offCtx,offBus,drumType,cursor+breakOffset,secBars,bps,rng2,featDrum);
+    const gtrVol=mixGtr*dynAmp*(featGuitar?FEAT_BOOST:1.0);
+    const gtrType={intro:'intro',A:'A',B:'B',chorus:'chorus',bigChorus:'chorus',bridge:'bridge',outro:'outro'}[sec.type]||'A';
+    scheduleGuitar(offCtx,offBus,adjProg,gtrType,cursor+breakOffset,secBars,bps,rng2,guitarType,gtrVol,featGuitar);
+    const bassVol=mixBass*dynAmp*(featBass?FEAT_BOOST:1.0);
+    const bassType2={intro:'intro',A:'A',B:'B',chorus:'chorus',bigChorus:'chorus',bridge:'bridge',outro:'outro'}[sec.type]||'A';
+    scheduleBass(offCtx,offBus,adjProg,bassType2,cursor+breakOffset,secBars,bps,rng2,bassType,bassVol,featBass);
+    const melVol=mixMel*dynAmp;
+    const isChorus=sec.type==='chorus'||sec.type==='bigChorus';
+    const addVib=isChorus, addHarm=hasHarmony&&isChorus;
+    const usedMotif=(sec.type==='intro'||isChorus)?motif:null;
+    for(let ph=0;ph<secBars;ph+=2){
+      const phBars=Math.min(2,secBars-ph);
+      const phBeats=phBars*4;
+      const notes=generateMelody(rng2,adjRoot,scale,phBeats,sec.type,isChorus,usedMotif,addHarm,addVib);
+      notes.forEach(n=>{
+        const t=cursor+breakOffset+(ph+n.time/4)*bar;
+        const dur=n.dur/4*bar*0.92;
+        playMelodyNote(offCtx,offBus,midiToFreq(n.midi),t,dur,melodyType,melVol,n.vibrato||false,n.harmony||false);
+      });
+    }
+    cursor+=secBars*bar;
+  });
+  currentNodes=prevNodes; audioCtx=prevCtx;
+}
+
+function bufferToWav(buffer) {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate  = buffer.sampleRate;
+  const length      = buffer.length * numChannels * 2;
+  const buf         = new ArrayBuffer(44 + length);
+  const view        = new DataView(buf);
+  const writeStr    = (offset, s) => { for (let i=0;i<s.length;i++) view.setUint8(offset+i,s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4,36+length,true); writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,numChannels,true); view.setUint32(24,sampleRate,true);
+  view.setUint32(28,sampleRate*numChannels*2,true); view.setUint16(32,numChannels*2,true);
+  view.setUint16(34,16,true); writeStr(36,'data'); view.setUint32(40,length,true);
+  let offset = 44;
+  for (let i=0;i<buffer.length;i++) {
+    for (let ch=0;ch<numChannels;ch++) {
+      const s = Math.max(-1,Math.min(1,buffer.getChannelData(ch)[i]));
+      view.setInt16(offset, s<0?s*32768:s*32767, true);
+      offset += 2;
+    }
+  }
+  return buf;
+}
+
+function copyId() {
+  if (!currentSong) return;
+  navigator.clipboard.writeText(currentSong.id).then(() => log('IDコピー完了: ' + currentSong.id, 'ok'));
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', () => {
+  drawWave();
+  log('システム起動完了', 'ok');
+  log('「作曲する」ボタンを押してください', 'info');
+});
+</script>
+</body>
+</html>
