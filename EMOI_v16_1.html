@@ -1,0 +1,182 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>EMOI v16 — アンサンブル作曲</title>
+<style>
+:root{--bg:#f6f4ef;--fg:#222;--mu:#777;--ac:#b4472f;--cd:#fff;--ln:#ddd;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15161a;--fg:#e8e6e1;--mu:#8a8a90;--ac:#e07a5f;--cd:#1e2026;--ln:#33363d}}
+:root[data-theme="dark"]{--bg:#15161a;--fg:#e8e6e1;--mu:#8a8a90;--ac:#e07a5f;--cd:#1e2026;--ln:#33363d}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,"Hiragino Sans",sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+h1{font-weight:600;letter-spacing:.1em;margin:0}h1 small{color:var(--ac);font-size:14px}
+.mu{color:var(--mu);font-size:13px}.row{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+input,button{font:inherit;padding:8px 12px;border:1px solid var(--ln);border-radius:8px;background:var(--cd);color:var(--fg)}
+input{flex:1;min-width:120px}button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.s{background:var(--cd);border:1px solid var(--ln);border-radius:10px;padding:10px 12px;margin:8px 0;cursor:pointer}
+.s.on{border-color:var(--ac)}.s b{font-weight:600}
+#tl{display:flex;gap:2px;margin:8px 0}#tl div{font-size:11px;text-align:center;padding:6px 0;background:var(--ln);border-radius:4px;overflow:hidden;white-space:nowrap}
+#tl div.on{background:var(--ac);color:#fff}
+</style></head><body><main>
+<h1>EMOI <small>v16</small></h1><div class="mu">アンサンブル作曲エンジン ／ 声部が役割を交代する5曲ミニアルバム</div>
+<div class="row"><input id="aid" placeholder="アルバムID"><button class="p" id="rnd">作曲</button><button id="go">▶ 全曲再生</button></div>
+<div id="arc" class="mu"></div><div id="list"></div><div id="tl"></div><div id="info" class="mu"></div>
+<div class="row"><button id="pa">⏸ 一時停止/再開</button><button id="st">■ 停止</button><label class="mu"><input type="checkbox" id="dr" checked style="flex:none"> ドラム</label><button id="wv">WAV保存（選択中の曲）</button></div>
+<div class="mu">エンジン v16.1（20曲型） ／ 同じアルバムID＋同じバージョンで同じ曲が再現されます</div>
+</main><script>
+const VER='16.1',$=x=>document.getElementById(x);
+function H(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function R(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const SCL={maj:[0,2,4,5,7,9,11],min:[0,2,3,5,7,8,10],dor:[0,2,3,5,7,9,10],lyd:[0,2,4,6,7,9,11],mix:[0,2,4,5,7,9,10]};
+const PG={maj:[[0,4,5,3],[0,5,3,4],[0,2,3,4],[0,3,0,4]],min:[[0,5,2,6],[0,3,6,4],[0,6,5,6],[0,2,5,4]],dor:[[0,3,0,6],[0,1,3,0],[0,6,3,6]],lyd:[[0,1,0,4],[0,1,4,0]],mix:[[0,6,3,0],[0,6,4,0]]};
+const VN=['ベル','フルート','パッド','プラック','ベース','テクスチャ'];
+// 役割: L主役 C対旋律 H和声 P反復 B低音 T質感 S休止 ／ 並びは声部0〜5
+const SLN=['静かな始まり','躍動','内省','大きな頂点','余韻'];
+const AR=[
+{s:0,n:'夜明け',m:['dor','min'],bp:[62,72],g:'slow',end:'exit',dr:'none',f:'intro:4:.2:SSTSBT:o|A:8:.45:SCHPLT:o|B:8:.9:LCHPBT:high|A2:8:.6:CLHSBT:seq|outro:4:.2:SSHSBT:o'},
+{s:0,n:'霧',m:['lyd','dor'],bp:[58,66],g:'slow',end:'exit',dr:'none',f:'intro:4:.15:SSTSST:o|A:8:.3:SLHSBT:o|B:8:.55:CLHPBT:high|A2:8:.35:SLHCBT:frag|outro:4:.15:SSHSBT:o'},
+{s:0,n:'水面',m:['maj','lyd'],bp:[72,80],g:'slow',end:'converge',dr:'none',f:'intro:4:.2:SSTPST:o|A:8:.4:LSHPBT:o|B:8:.6:LCHPBT:seq|A2:8:.45:LSHPBT:inv|outro:4:.2:SSHPBT:o'},
+{s:0,n:'星屑',m:['lyd','maj'],bp:[60,68],g:'slow',end:'recall',dr:'none',f:'intro:2:.15:SSHSST:o|A:8:.35:LSHSBT:o|B:8:.5:LCHSBT:high|A2:8:.35:LSHPBT:frag|outro:6:.15:LSHSBT:aug'},
+{s:1,n:'鼓動',m:['mix','maj'],bp:[104,116],g:'drive',end:'converge',dr:'beat',f:'intro:4:.3:SSSPBT:o|A:8:.55:PCHLBT:o|B:8:.8:LCHPBT:seq|break:4:.3:SSTSLT:o|C:8:1:LLHPBT:high|outro:4:.3:SSHPBT:o'},
+{s:1,n:'疾走',m:['min','dor'],bp:[120,132],g:'sync',end:'converge',dr:'drive',f:'intro:4:.35:SPSSBT:o|A:8:.6:CSHLBT:o|B:8:.85:LCHPBT:seq|break:4:.35:SSHPLT:o|C:8:.95:LLHPBT:high|outro:4:.3:SSHPBT:o'},
+{s:1,n:'市場',m:['mix','dor'],bp:[96,106],g:'sync',end:'exit',dr:'beat',f:'intro:4:.3:SPTSBT:o|A:8:.55:LSHCBT:o|B:8:.75:CLHPBT:inv|A2:8:.6:SLHCBT:seq|C:8:.85:LCHPBT:high|outro:4:.25:SSHPBT:o'},
+{s:1,n:'跳ね',m:['maj','mix'],bp:[100,112],g:'drive',end:'exit',dr:'beat',f:'intro:2:.3:SSSPLT:o|A:8:.5:PCHSLT:o|B:8:.8:LCHPBT:o|A2:8:.6:CSHLBT:seq|outro:4:.25:SSHPBT:o'},
+{s:2,n:'対話',m:['min','dor'],bp:[88,98],g:'sync',end:'recall',dr:'soft',f:'intro:4:.25:SLTSST:frag|A:8:.5:LCHSBT:o|B:8:.65:CLHPBT:seq|C:8:.95:LCHPBT:high|A2:4:.45:SCHSBT:frag|outro:4:.25:SSHSBT:aug'},
+{s:2,n:'独白',m:['min','dor'],bp:[56,66],g:'slow',end:'recall',dr:'none',f:'intro:2:.15:SSTSST:o|A:8:.3:SLHSBT:o|B:8:.5:SLHPBT:seq|A2:8:.3:SLTSBT:frag|outro:8:.15:LSHSBT:aug'},
+{s:2,n:'回廊',m:['dor','min'],bp:[76,86],g:'slow',end:'exit',dr:'none',f:'intro:4:.2:LSTSST:frag|A:8:.4:LCHSBT:o|B:8:.55:CLHPBT:seq|C:8:.7:LCHPBT:inv|outro:4:.2:SSHSBT:o'},
+{s:2,n:'影',m:['min','dor'],bp:[70,82],g:'sync',end:'exit',dr:'soft',f:'intro:4:.25:SSTSLT:o|A:8:.5:CSHPLT:o|B:8:.7:CLHPBT:seq|A2:8:.55:CSHSLT:inv|outro:4:.2:SSHSBT:o'},
+{s:3,n:'高揚',m:['maj','lyd'],bp:[116,126],g:'drive',end:'converge',dr:'drive',f:'intro:4:.3:SPSSBT:o|A:8:.5:LCHPBT:o|B:8:.75:CLHPBT:inv|A2:4:.55:LSHPBT:o|C:12:1:LLHPBT:high|D:8:.9:LCHPBT:high|outro:4:.3:SSHPBT:o'},
+{s:3,n:'凱旋',m:['maj','mix'],bp:[108,118],g:'drive',end:'converge',dr:'beat',f:'intro:4:.4:SPSSBT:o|A:8:.6:LCHPBT:o|B:8:.8:CLHPBT:seq|C:12:1:LLHPBT:high|D:8:.95:LCHPBT:high|outro:4:.3:SSHPBT:o'},
+{s:3,n:'奔流',m:['min','dor'],bp:[124,136],g:'sync',end:'converge',dr:'drive',f:'intro:4:.35:SPSSBT:o|A:8:.65:LCHPBT:o|B:8:.85:CLHPBT:inv|C:16:1:LLHPBT:high|outro:4:.3:SSHPBT:o'},
+{s:3,n:'天頂',m:['lyd','maj'],bp:[84,94],g:'slow',end:'recall',dr:'beat',f:'intro:4:.2:SSTSBT:o|A:8:.45:LCHPBT:o|B:8:.7:CLHPBT:seq|C:12:1:LLHPBT:high|outro:6:.2:LSHSBT:aug'},
+{s:4,n:'余韻',m:['lyd','maj'],bp:[68,76],g:'slow',end:'recall',dr:'none',f:'intro:2:.2:SSHSST:o|A:8:.45:LCHPBT:o|B:8:.85:LCHPBT:high|A2:8:.45:CLHPBT:seq|outro:8:.2:LSHSBT:aug'},
+{s:4,n:'帰路',m:['maj','lyd'],bp:[76,86],g:'slow',end:'recall',dr:'soft',f:'intro:2:.3:SSHSBT:o|A:8:.5:LCHPBT:o|B:8:.7:CLHPBT:seq|A2:8:.4:LSHPBT:o|outro:6:.15:LSHSBT:aug'},
+{s:4,n:'追憶',m:['min','dor'],bp:[60,70],g:'slow',end:'recall',dr:'none',f:'intro:2:.15:SSTSST:o|A:8:.35:SLHSBT:o|B:8:.55:CLHPBT:seq|A2:8:.3:SLHSBT:frag|outro:8:.12:LSHSBT:aug'},
+{s:4,n:'灯',m:['dor','lyd'],bp:[64,72],g:'slow',end:'exit',dr:'none',f:'intro:4:.15:SSHSST:o|A:8:.35:LSHSBT:o|B:8:.5:LCHPBT:high|outro:4:.12:SSHSBT:o'}];
+const RNG=[[62,90],[55,86],[46,70],[55,86],[28,52],[72,96]],CEN=[72,67,55,67,40,84],SND=[.5,.4,.8,.35,0,.7,.12];
+const RG={L:.85,C:.6,H:.5,P:.5,B:.75,T:.28};
+const fit=(m,lo,hi)=>{while(m<lo)m+=12;while(m>hi)m-=12;return m};
+function plan(aid){const r=R(H('P'+aid+VER)),pc=[0,2,3,5,7,9,10][r()*7|0],sh=[[0,1,2,3,4],[0,2,1,3,4],[0,1,3,2,4]][r()*3|0];return sh.map((sl,i)=>{const c=AR.filter(x=>x.s==sl);return{a:c[r()*c.length|0],i,sl,id:aid+'-'+(i+1),pc:(pc+[0,7,5,9,0][i])%12}})}
+
+function compose(p){
+const a=p.a,r=R(H(p.id+VER)),mode=a.m[r()*a.m.length|0],sc=SCL[mode],T0=36+p.pc,bpm=a.bp[0]+Math.round(r()*(a.bp[1]-a.bp[0]));
+const pgs=PG[mode],P0=pgs[r()*pgs.length|0];let P1=pgs[r()*pgs.length|0];if(P1==P0)P1=pgs[(pgs.indexOf(P0)+1)%pgs.length];
+const sm=d=>T0+sc[((d%7)+7)%7]+12*Math.floor(d/7);
+const RT=[[0,3,6,8,12],[0,4,8,10,12,14],[0,2,4,8,10],[0,6,8,12],[0,4,6,8,12]];
+const rh=[...RT[r()*5|0],...RT[r()*5|0].map(x=>x+16)];let d0=[0,2,4][r()*3|0]+14;
+const M=rh.map((s,k)=>{if(k)d0+=[-2,-1,-1,1,1,2,3][r()*7|0];d0=Math.max(10,Math.min(20,d0));return{s,d:d0,l:(rh[k+1]??32)-s}});
+const vary=v=>{let m=M.map(n=>({...n})),span=2,hi=0;
+ if(v=='seq')m.forEach(n=>n.d+=1);if(v=='inv')m.forEach(n=>n.d=30-n.d);
+ if(v=='high'){m.forEach(n=>n.d+=2);hi=5}
+ if(v=='frag'){const f=m.slice(0,3);m=[...f,...f.map(n=>({...n,s:n.s+16,d:n.d+1}))]}
+ if(v=='aug'){m.forEach(n=>{n.s*=2;n.l*=2});span=4}
+ return{m,span,hi}};
+const secs=a.f.split('|').map(x=>{const[k,n,e,ro,v]=x.split(':');return{k,n:+n,e:+e,r:ro,v}});
+const CAD={exit:[3,4,0],recall:[3,0],converge:[4,4,0]}[a.end],ex=[0,1,3,5].sort(()=>r()-.5);
+const N=[],SEC=[];let bar=0;
+const push=(b,d,i,m,v,role)=>N.push({b,d,i,m,v:Math.min(1.2,v),role});
+const rng=(i,role,hi)=>{let g=role=='B'?(i==4?[33,55]:[36,52]):role=='H'?(i==5?[60,84]:[46,70]):(i==4&&(role=='L'||role=='C'))?[52,80]:RNG[i];return hi?[g[0]+hi,g[1]+hi]:g};
+secs.forEach((s,si)=>{
+ const mv=vary(s.v),pg=/^[BCD]/.test(s.k)?P1:P0,outro=s.k=='outro',st=bar*4;
+ for(let b=0;b<s.n;b++){
+  const gb=bar++,bt=gb*4,fin=outro&&b==s.n-1;
+  let roles=s.r.split('');
+  if(outro){
+   if(a.end=='exit'){roles=secs[si-1].r.split('');ex.slice(0,Math.min(b+1,4)).forEach(i=>roles[i]='S')}
+   if(a.end=='recall')roles='LSHSBT'.split('');
+   if(a.end=='converge')roles='PCHPBT'.split('');
+   if(fin)roles=(a.end=='recall'?'LSHSBS':'SSHSBS').split('');
+  }
+  const c=outro&&b>=s.n-CAD.length?CAD[b-(s.n-CAD.length)]:pg[b%pg.length];
+  const simp=outro&&a.end=='converge'?Math.min(b,2):0,e=outro?s.e*(1-.4*b/s.n):s.e*(.85+.15*(s.n>1?b/(s.n-1):1));
+  const cont=.8+.2*Math.sin(Math.PI*(gb%4)/3),cds=[c,c+2,c+4];
+  const snap=x=>{for(const q of[0,1,-1])if(cds.some(z=>(((x+q-z)%7)+7)%7==0))return x+q;return x};
+  const mask=new Array(16).fill(0);let lastD=null;
+  for(const role of['L','C','H','P','B','T'])for(let i=0;i<6;i++){if(roles[i]!=role)continue;
+   const[lo,hi]=rng(i,role,role=='L'||role=='C'?mv.hi:0),vb=e*cont*RG[role]*(.92+r()*.16),bim=b%mv.span;
+   const r0=fit(sm(c),lo,lo+11),t3=r0+sm(c+2)-sm(c),t5=r0+sm(c+4)-sm(c);
+   if(role=='L'){mv.m.filter(n=>n.s>=bim*16&&n.s<bim*16+16).forEach(n=>{const st0=n.s%16;let dd=n.d;if(st0%8==0)dd=snap(dd);lastD=dd;
+     for(let q=st0;q<Math.min(16,st0+n.l);q++)mask[q]=1;
+     push(bt+st0/4,Math.min(n.l,16-st0)*.25*.95,i,fit(sm(dd),lo,hi),vb*(st0%8==0?1:.88),role)})}
+   if(role=='C'){let q=0;while(q<16){if(mask[q]){q++;continue}let q2=q;while(q2<16&&!mask[q2])q2++;const L=q2-q;
+     if(L>=3&&q>0){const dd=snap((lastD??c+9)-2);push(bt+q/4,Math.min(L,6)*.25*.95,i,fit(sm(dd),lo,hi),vb,role);
+      if(L>=8)push(bt+(q+4)/4,Math.min(L-4,4)*.25*.95,i,fit(sm(snap(dd+1)),lo,hi),vb*.85,role)}q=q2}}
+   if(role=='H'){const dur=fin?8:4;[r0,t3,t5].forEach((m,k)=>{if(e>.7&&!fin){push(bt,2,i,m,vb*.9,role);push(bt+2,2,i,m,vb*.8,role)}else push(bt,dur,i,m,vb*(k?.8:1),role)})}
+   if(role=='P'){const tt=[r0,t3,t5,r0+12],pt=[0,1,2,3,2,1];
+     let ps=a.g=='sync'?[0,3,6,8,11,14]:a.g=='slow'&&e<=.6?[0,4,8,12]:[0,2,4,6,8,10,12,14];
+     if(simp==1)ps=[0,4,8,12];if(simp==2)ps=[0,8];
+     ps.forEach((q,k)=>{if(simp==0&&r()<(1-e*1.2)*.3)return;const g=ps.length>1?(ps[k+1]??16)-q:8;
+      push(bt+q/4,g*.25*.9,i,tt[pt[k%6]],vb*(q%8==0?1:.75),role)})}
+   if(role=='B'){const bp=fin?[[0,32]]:a.g=='slow'?(e>.5?[[0,8],[8,8]]:[[0,16]]):a.g=='drive'?[[0,5],[6,2],[8,5],[12,2],[14,2]]:[[0,6],[6,2],[8,4],[12,2],[14,2]];
+     bp.forEach(([q,l],k)=>push(bt+q/4,l*.25*.9,i,k%3==2?t5:k%3==1&&e>.6?r0+12:r0,vb*(q==0?1:.8),role))}
+   if(role=='T'&&b%2==0)push(bt,Math.min(8,(s.n-b)*4),i,fit(sm(c+4),RNG[i][0],RNG[i][1]),vb,role);
+  }
+  const ds=a.dr;
+  if(ds!='none'&&!outro&&e>=(ds=='soft'?.6:.45)){const dv=.6+.4*e,dh=(q,k,x)=>push(bt+q/4,.1,6,k,x*dv,'D');
+   const nx=secs[si+1];
+   if(b==s.n-1&&nx&&nx.e>s.e+.1){dh(0,0,.5);[8,10,12,13,14,15].forEach((q,j)=>dh(q,1,.25+j*.07))}
+   else if(ds=='soft'){dh(0,0,.35);if(e>.8)dh(10,0,.3);dh(12,1,.12)}
+   else{(ds=='drive'?[0,4,8,12]:e>.8?[0,8,10]:[0,8]).forEach(q=>dh(q,0,.5));[4,12].forEach(q=>dh(q,1,.35));
+    (ds=='drive'?[2,6,10,14]:[0,2,4,6,8,10,12,14]).forEach(q=>dh(q,2,q%4==0?.16:.1))}}
+ }
+ SEC.push({k:s.k,st,en:bar*4,e:s.e,r:s.r,v:s.v});
+});
+const os=SEC[SEC.length-1],rs=os.st,rl=os.en-os.st,k=a.end=='recall'?.9:a.end=='exit'?.5:.4,spb=60/bpm;
+const T=b=>b<=rs?b*spb:(x=>rs*spb+spb*(x+k*x*x/(2*rl)))(b-rs);
+SEC.forEach(s=>s.ts=T(s.st));
+const rc=SEC.reduce((q,s,i)=>q+(i?s.r.split('').filter((x,j)=>x!=SEC[i-1].r[j]).length:0),0);
+const noL=Math.round(100*SEC.filter(s=>!s.r.includes('L')).reduce((q,s)=>q+s.en-s.st,0)/os.en);
+const pk=SEC.reduce((m,s)=>s.e>m.e?s:m,SEC[0]);
+const keyN=['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'][p.pc];
+return{id:p.id,name:a.n,sl:p.sl,mode,key:keyN,bpm,N,SEC,T,dur:T(bar*4+6)+3,
+ rep:`役割の入れ替わり ${rc}回 ／ 主旋律のない小節 ${noL}% ／ 頂点: ${pk.k}（強度${pk.e}）／ 終止: ${{exit:'声部の順次退場',recall:'主題の回想（拡大）',converge:'リズムの収束'}[a.end]}`}}
+
+function mkNb(c){const rr=R(7),nb=c.createBuffer(1,c.sampleRate*2,c.sampleRate),x=nb.getChannelData(0);for(let k=0;k<x.length;k++)x[k]=rr()*2-1;c._nb=nb}
+const WT=[[[1,.55],[2,.28],[3,.12],[4,.04]],[[1,.6],[2,.28],[3,.1]],[[1,.4],[2,.24],[3,.13]],[[1,.6],[2,.3],[3,.15],[4,.07]],[[1,.64],[2,.22],[3,.08]],[[1,.5],[2,.18]]];
+function wave(c,i){c._w=c._w||{};if(c._w[i])return c._w[i];const P=WT[i],n=5,re=new Float32Array(n),im=new Float32Array(n);P.forEach(([k,x])=>im[k]=x);return c._w[i]=c.createPeriodicWave(re,im)}
+function note(c,dst,i,t,d,m,v){
+ const f=440*2**((m-69)/12),o=c.createGain();let a=.01,r=.12,dec=0;const S=[];
+ const osc=(dt,out)=>{const s=c.createOscillator();s.setPeriodicWave(wave(c,i));s.frequency.value=f;s.detune.value=dt;s.connect(out);s.start(t);S.push(s)};
+ if(i==3){const fl=c.createBiquadFilter();fl.type='lowpass';fl.frequency.setValueAtTime(Math.min(16000,f*9),t);fl.frequency.exponentialRampToValueAtTime(f*2,t+.25);fl.connect(o);osc(0,fl);dec=.5}
+ else if(i==1||i==2){osc(-7,o);osc(7,o);if(i==1){a=.06;r=.28}else{a=.4;r=.7}}
+ else{osc(0,o);if(i==0){a=.008;dec=Math.max(.9,d*1.1)}if(i==4){a=.018;r=.08}if(i==5){a=d*.4;r=d*.5}}
+ o.connect(dst);
+ const e=o.gain;e.setValueAtTime(0,t);e.linearRampToValueAtTime(v,t+a);let end;
+ if(dec){e.setTargetAtTime(0,t+a,dec/3);end=t+a+dec*1.3}
+ else{e.setValueAtTime(v,Math.max(t+a,t+d));e.linearRampToValueAtTime(0,t+Math.max(a,d)+r);end=t+Math.max(a,d)+r}
+ S.forEach(s=>s.stop(end+.05))}
+function drum(c,dst,k,t,v){const o=c.createGain();o.connect(dst);
+ if(k==0){const s=c.createOscillator();s.frequency.setValueAtTime(190,t);s.frequency.exponentialRampToValueAtTime(48,t+.12);o.gain.setValueAtTime(v,t);o.gain.exponentialRampToValueAtTime(.001,t+.4);s.connect(o);s.start(t);s.stop(t+.45);return}
+ const s=c.createBufferSource(),f=c.createBiquadFilter(),L=k==1?.16:.05;s.buffer=c._nb;f.type='highpass';f.frequency.value=k==1?1500:7000;s.connect(f);f.connect(o);
+ o.gain.setValueAtTime(v,t);o.gain.exponentialRampToValueAtTime(.001,t+L);s.start(t,(t*7)%1);s.stop(t+L+.02);
+ if(k==1){const q=c.createOscillator(),g=c.createGain();q.frequency.value=190;g.gain.setValueAtTime(v*.5,t);g.gain.exponentialRampToValueAtTime(.001,t+.1);q.connect(g);g.connect(dst);q.start(t);q.stop(t+.12)}}
+function rig(c,bpm){mkNb(c);const m=c.createGain();m.gain.value=2.4;const cp=c.createDynamicsCompressor();cp.threshold.value=-20;cp.ratio.value=2.2;cp.attack.value=.02;cp.release.value=.3;m.connect(cp);const lm=c.createDynamicsCompressor();lm.threshold.value=-4;lm.knee.value=0;lm.ratio.value=20;lm.attack.value=.003;lm.release.value=.1;cp.connect(lm);lm.connect(c.destination);
+ const rr=R(11),len=c.sampleRate*1.8,ib=c.createBuffer(2,len,c.sampleRate);for(let h=0;h<2;h++){const x=ib.getChannelData(h);for(let k=0;k<len;k++)x[k]=(rr()*2-1)*Math.pow(1-k/len,3)}
+ const cv=c.createConvolver();cv.buffer=ib;const wg=c.createGain();wg.gain.value=.3;cv.connect(wg);wg.connect(m);
+ const dl=c.createDelay(2);dl.delayTime.value=60/bpm*.75;const fb=c.createGain();fb.gain.value=.3;dl.connect(fb);fb.connect(dl);dl.connect(cv);
+ return[0,1,2,3,4,5,6].map(i=>{const b=c.createGain();b.connect(m);if(SND[i]){const s=c.createGain();s.gain.value=SND[i];b.connect(s);s.connect(cv)}
+  if(i==0||i==3){const s=c.createGain();s.gain.value=.25;b.connect(s);s.connect(dl)}return b})}
+let CAL=null;
+async function calibrate(){if(CAL)return;const q=[];for(let i=0;i<6;i++){const c=new OfflineAudioContext(1,88200,44100);mkNb(c);note(c,c.destination,i,0,1.2,CEN[i],1);const x=(await c.startRendering()).getChannelData(0);let s=0,n=0;for(let k=0;k<x.length;k++)if(Math.abs(x[k])>.002){s+=x[k]*x[k];n++}q[i]=Math.min(4,.1/Math.sqrt(s/Math.max(n,1)+1e-9))}CAL=q}
+function sched(c,s,t0){const bus=rig(c,s.bpm);s.N.forEach(n=>{const a=t0+s.T(n.b),e=t0+s.T(n.b+n.d);n.i==6?(DRUM&&drum(c,bus[6],n.m,a,n.v)):note(c,bus[n.i],n.i,a,e-a,n.m,n.v*CAL[n.i])})}
+
+let DRUM=true,BUS,NP=0,PI=0,SONGS=[],AC=null,T0=0,IDX=0,ALL=false,raf=0;
+function setAlbum(id){$('aid').value=id;SONGS=plan(id).map(compose);
+ $('list').innerHTML=SONGS.map((s,i)=>`<div class="s" id="s${i}"><b>${i+1}. ${s.name}</b> <span class="mu">［${SLN[s.sl]}］</span> <span class="mu">${s.key} ${s.mode} ／ ♩=${s.bpm} ／ ${s.id}</span></div>`).join('');
+ $('arc').textContent='アルバムの流れ: '+SONGS.map(s=>SLN[s.sl]).join(' → ');SONGS.forEach((s,i)=>$('s'+i).onclick=()=>start(i,false));show(0)}
+function show(i){IDX=i;const s=SONGS[i];document.querySelectorAll('.s').forEach((x,k)=>x.classList.toggle('on',k==i));
+ const tot=s.SEC[s.SEC.length-1].en;$('tl').innerHTML=s.SEC.map(x=>`<div style="flex:${x.en-x.st}">${x.k}</div>`).join('');$('info').textContent=s.rep}
+function pump(){if(!AC)return;const s=SONGS[IDX],t=AC.currentTime-T0;while(NP<s.N.length&&s.T(s.N[NP].b)<t+6){const n=s.N[NP++],a=T0+s.T(n.b),e=T0+s.T(n.b+n.d);n.i==6?(DRUM&&drum(AC,BUS[6],n.m,a,n.v)):note(AC,BUS[n.i],n.i,a,e-a,n.m,n.v*CAL[n.i])}}
+async function start(i,all){await calibrate();stop();ALL=all;show(i);AC=new AudioContext({latencyHint:'playback'});await AC.resume();T0=AC.currentTime+.3;BUS=rig(AC,SONGS[i].bpm);NP=0;SONGS[i].N.sort((x,y)=>x.b-y.b);pump();PI=setInterval(pump,150);tick()}
+function stop(){clearInterval(PI);cancelAnimationFrame(raf);if(AC){AC.close();AC=null}}
+function tick(){if(!AC)return;const s=SONGS[IDX],t=AC.currentTime-T0;let k=0;s.SEC.forEach((x,j)=>{if(x.ts<=t)k=j});
+ [...$('tl').children].forEach((x,j)=>x.classList.toggle('on',j==k));
+ if(t>s.dur){if(ALL&&IDX<4)start(IDX+1,true);else stop();return}raf=requestAnimationFrame(tick)}
+async function wav(){await calibrate();const s=SONGS[IDX],c=new OfflineAudioContext(2,Math.ceil(44100*(s.dur+.2)),44100);sched(c,s,.1);const b=await c.startRendering();
+ const L=b.getChannelData(0),Rr=b.getChannelData(1),n=L.length,buf=new ArrayBuffer(44+n*4),v=new DataView(buf),w=(o,t)=>[...t].forEach((ch,k)=>v.setUint8(o+k,ch.charCodeAt(0)));
+ w(0,'RIFF');v.setUint32(4,36+n*4,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,44100,true);v.setUint32(28,176400,true);v.setUint16(32,4,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*4,true);
+ const cl=x=>Math.max(-1,Math.min(1,x))*32767;for(let k=0;k<n;k++){v.setInt16(44+k*4,cl(L[k]),true);v.setInt16(46+k*4,cl(Rr[k]),true)}
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'audio/wav'}));a.download='emoi-'+s.id+'.wav';a.click()}
+$('rnd').onclick=()=>setAlbum(Math.random().toString(36).slice(2,8));
+$('aid').onchange=()=>$('aid').value&&setAlbum($('aid').value.trim());
+$('go').onclick=()=>start(0,true);$('st').onclick=stop;
+$('pa').onclick=()=>{if(!AC)return;AC.state=='running'?AC.suspend():AC.resume()};
+$('dr').onchange=()=>DRUM=$('dr').checked;$('wv').onclick=wav;
+setAlbum('emoi01');
+</script></body></html>
